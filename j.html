@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>仓库人员管理系统</title>
+    <style>
+        * {margin: 0; padding: 0; box-sizing: border-box; font-family: "微软雅黑";}
+        body {display: flex; height: 100vh; background: #f5f7fa;}
+        /* 侧边导航 */
+        .sidebar {width: 180px; background: #2d3748; padding-top: 40px;}
+        .nav-btn {
+            display: block;
+            width: 90%; margin: 10px auto; padding: 14px;
+            border: none; background: #4a5568; color: white; font-size: 16px;
+            border-radius: 6px; cursor: pointer;
+        }
+        .nav-btn.active {background: #3182ce;}
+        /* 主内容区 */
+        .main {flex: 1; padding: 30px; overflow: auto;}
+        .page {display: none;}
+        .page.show {display: block;}
+        h2 {margin-bottom: 25px; color: #2d3748;}
+
+        /* 仓库页面样式 */
+        .warehouse-box {
+            display: grid; grid-template-columns: repeat(4, 180px);
+            gap: 20px; margin-bottom: 30px;
+        }
+        .goods-item {
+            background: white; padding: 15px; border-radius: 8px;
+            text-align: center; box-shadow: 0 2px 8px #ddd;
+        }
+        .goods-icon {font-size: 48px; margin-bottom: 8px;}
+        .total-stock {
+            padding: 15px; background: #e6fffa; border-radius: 8px;
+            font-size: 18px; font-weight: bold; color: #006d77;
+        }
+
+        /* 人员页面样式 */
+        .staff-box {
+            display: grid;
+            grid-template-columns: repeat(8, 140px);
+            gap: 16px; margin-bottom: 30px;
+        }
+        .person-card {
+            background: white; width: 140px; padding: 16px;
+            border-radius: 10px; text-align: center; box-shadow: 0 2px 8px #ddd;
+        }
+        .person-ani {
+            font-size: 50px; margin-bottom: 8px;
+            animation: walk 2s infinite alternate;
+        }
+        @keyframes walk {
+            from {transform: translateY(0);}
+            to {transform: translateY(-6px);}
+        }
+        .status-morning {color: #2f855a; font-size: 14px;}
+        .status-night {color: #c53030; font-size: 14px;}
+        .status-all {color: #3182ce; font-size: 14px;}
+        .total-person {
+            padding: 15px; background: #f0f4ff; border-radius: 8px;
+            font-size: 18px; font-weight: bold; color: #2c5282;
+        }
+    </style>
+</head>
+<body>
+    <!-- 侧边切换菜单 -->
+    <div class="sidebar">
+        <button class="nav-btn active" onclick="switchPage('warehouse')">可视化仓库</button>
+        <button class="nav-btn" onclick="switchPage('staff')">人员到岗</button>
+    </div>
+
+    <div class="main">
+        <!-- 页面1：仓库 -->
+        <div id="warehouse" class="page show">
+            <h2>仓库货物货架</h2>
+            <div class="warehouse-box">
+                <div class="goods-item">
+                    <div class="goods-icon">📦</div>
+                    <div>钢材原料</div>
+                    <div>库存：126</div>
+                </div>
+                <div class="goods-item">
+                    <div class="goods-icon">🔩</div>
+                    <div>标准钢球</div>
+                    <div>库存：890</div>
+                </div>
+                <div class="goods-item">
+                    <div class="goods-icon">🛠️</div>
+                    <div>铸造模具</div>
+                    <div>库存：32</div>
+                </div>
+                <div class="goods-item">
+                    <div class="goods-icon">⚙️</div>
+                    <div>机械配件</div>
+                    <div>库存：157</div>
+                </div>
+                <div class="goods-item">
+                    <div class="goods-icon">🪨</div>
+                    <div>铸造砂料</div>
+                    <div>库存：640</div>
+                </div>
+                <div class="goods-item">
+                    <div class="goods-icon">🧰</div>
+                    <div>维修工具</div>
+                    <div>库存：48</div>
+                </div>
+            </div>
+            <div class="total-stock">
+                当前仓库货物总数量：<span id="allNum">1893</span> 件
+            </div>
+        </div>
+
+        <!-- 页面2：人员到岗 -->
+        <div id="staff" class="page">
+            <h2>员工今日到岗状态（共40人）</h2>
+            <div class="staff-box">
+                <!-- 年长：鸡大系列 20人 -->
+                <div class="person-card"><div class="person-ani">👷</div><h4>鸡大强</h4><p class="status-morning">早上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡大国</h4><p class="status-night">晚上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡大梅</h4><p class="status-all">全天在岗</p></div>
+                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡大海</h4><p class="status-morning">早上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷</div><h4>鸡大山</h4><p class="status-night">晚上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡大刚</h4><p class="status-all">全天在岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡大芬</h4><p class="status-morning">早上到岗</p></div>
+                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡大军</h4><p class="status-night">晚上到岗</p></div>
+
+                <div class="person-card"><div class="person-ani">👷</div><h4>鸡大林</h4><p class="status-all">全天在岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡大忠</h4><p class="status-morning">早上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡大秀</h4><p class="status-night">晚上到岗</p></div>
+                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡大福</h4><p class="status-all">全天在岗</p></div>
+                <div class="person-card"><div class="person-ani">👷</div><h4>鸡大荣</h4><p class="status-morning">早上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡大伟</h4><p class="status-night">晚上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡大莲</h4><p class="status-all">全天在岗</p></div>
+                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡大斌</h4><p class="status-morning">早上到岗</p></div>
+
+                <div class="person-card"><div class="person-ani">👷</div><h4>鸡大彪</h4><p class="status-night">晚上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡大祥</h4><p class="status-all">全天在岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡大芝</h4><p class="status-morning">早上到岗</p></div>
+                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡大坤</h4><p class="status-night">晚上到岗</p></div>
+
+                <!-- 年轻：鸡小系列 20人 -->
+                <div class="person-card"><div class="person-ani">👷</div><h4>鸡小宇</h4><p class="status-all">全天在岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡小航</h4><p class="status-morning">早上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡小婷</h4><p class="status-night">晚上到岗</p></div>
+                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡小泽</h4><p class="status-all">全天在岗</p></div>
+                <div class="person-card"><div class="person-ani">👷</div><h4>鸡小豪</h4><p class="status-morning">早上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡小凯</h4><p class="status-night">晚上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡小冉</h4><p class="status-all">全天在岗</p></div>
+                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡小辰</h4><p class="status-morning">早上到岗</p></div>
+
+                <div class="person-card"><div class="person-ani">👷</div><h4>鸡小硕</h4><p class="status-night">晚上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡小杨</h4><p class="status-all">全天在岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡小诺</h4><p class="status-morning">早上到岗</p></div>
+                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡小峰</h4><p class="status-night">晚上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷</div><h4>鸡小恒</h4><p class="status-all">全天在岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡小乐</h4><p class="status-morning">早上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡小晴</h4><p class="status-night">晚上到岗</p></div>
+                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡小川</h4><p class="status-all">全天在岗</p></div>
+
+                <div class="person-card"><div class="person-ani">👷</div><h4>鸡小帆</h4><p class="status-morning">早上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡小源</h4><p class="status-night">晚上到岗</p></div>
+                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡小萱</h4><p class="status-all">全天在岗</p></div>
+                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡小炎</h4><p class="status-morning">早上到岗</p></div>
+            </div>
+            <div class="total-person">
+                今日到岗总人数：<span id="staffCount">40</span> 人
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 页面切换函数
+        function switchPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('show'))
+            document.getElementById(pageId).classList.add('show')
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'))
+            event.target.classList.add('active')
+        }
+    </script>
+</body>
+</html>
