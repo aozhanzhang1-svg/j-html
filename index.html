@@ -117,6 +117,31 @@
         .reset-btn:hover {background: #c53030;}
 
         .hint {font-size: 13px; color: #a0aec0; margin-bottom: 16px;}
+
+        /* loading 遮罩 */
+        .loading-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.75); justify-content: center; align-items: center;
+            z-index: 1001; font-size: 18px; color: #2d3748;
+        }
+        .loading-overlay.show {display: flex;}
+
+        /* 刷卡记录表格 */
+        .swipe-table-wrap {background: white; border-radius: 10px; box-shadow: 0 2px 8px #ddd; overflow: auto;}
+        .swipe-table {width: 100%; border-collapse: collapse; font-size: 14px;}
+        .swipe-table th {
+            background: #2d3748; color: white; padding: 12px 16px;
+            text-align: left; position: sticky; top: 0;
+        }
+        .swipe-table td {padding: 10px 16px; border-bottom: 1px solid #e2e8f0;}
+        .swipe-table tbody tr:hover {background: #edf2f7;}
+        .swipe-table code {background: #edf2f7; padding: 2px 8px; border-radius: 4px; font-size: 13px;}
+
+        .btn-export {padding: 10px 20px; background: #38a169; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;}
+        .btn-export:hover {background: #2f855a;}
+        .btn-refresh {padding: 10px 20px; background: #3182ce; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;}
+        .btn-refresh:hover {background: #2b6cb0;}
+        .total-swipe {padding: 15px; background: #f0f4ff; border-radius: 8px; font-size: 18px; font-weight: bold; color: #2c5282;}
     </style>
 </head>
 <body>
@@ -124,6 +149,7 @@
     <div class="sidebar">
         <button class="nav-btn active" onclick="switchPage('warehouse')">可视化仓库</button>
         <button class="nav-btn" onclick="switchPage('staff')">人员到岗</button>
+        <button class="nav-btn" onclick="switchPage('swipe')">📡 刷卡记录</button>
     </div>
 
     <div class="main">
@@ -148,6 +174,36 @@
             </div>
             <button class="reset-btn" onclick="resetAllData()">🔄 恢复默认数据</button>
         </div>
+
+        <!-- 页面3：刷卡记录 -->
+        <div id="swipe" class="page">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:25px;">
+                <h2 style="margin-bottom:0;">📡 RFID 刷卡记录</h2>
+                <div style="display:flex;gap:10px;">
+                    <button class="btn-export" onclick="exportCSV()">📥 导出 Excel (CSV)</button>
+                    <button class="btn-refresh" onclick="refreshSwipes()">🔄 刷新</button>
+                </div>
+            </div>
+            <p class="hint">💡 ESP32 通过 <code>POST /api/swipe</code> 推送刷卡数据，此页面自动显示最新记录</p>
+            <div class="swipe-table-wrap">
+                <table class="swipe-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>卡号 (Card ID)</th>
+                            <th>姓名</th>
+                            <th>刷卡时间</th>
+                        </tr>
+                    </thead>
+                    <tbody id="swipeBody">
+                        <tr><td colspan="4" style="text-align:center;color:#a0aec0;padding:40px;">暂无刷卡记录</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="total-swipe" style="margin-top:16px;">
+                总刷卡次数：<span id="swipeTotal">0</span> 次
+            </div>
+        </div>
     </div>
 
     <!-- 编辑弹窗 -->
@@ -161,6 +217,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Loading 遮罩 -->
+    <div class="loading-overlay" id="loadingOverlay">⏳ 同步数据中...</div>
 
     <!-- Toast 提示 -->
     <div class="toast" id="toast"></div>
@@ -228,32 +287,36 @@
             off:     { text: '未到岗',   cls: 'status-off' },
         };
 
-        // ========== 数据读写 ==========
-        function loadData() {
-            try {
-                const g = localStorage.getItem('j_goods');
-                const s = localStorage.getItem('j_staff');
-                return {
-                    goods: g ? JSON.parse(g) : JSON.parse(JSON.stringify(DEFAULT_GOODS)),
-                    staff: s ? JSON.parse(s) : JSON.parse(JSON.stringify(DEFAULT_STAFF)),
-                };
-            } catch (e) {
-                return {
-                    goods: JSON.parse(JSON.stringify(DEFAULT_GOODS)),
-                    staff: JSON.parse(JSON.stringify(DEFAULT_STAFF)),
-                };
+        // ========== 数据读写 (API) ==========
+        const API_BASE = '/api/stock';
+
+        async function fetchStockData() {
+            const res = await fetch(API_BASE);
+            if (!res.ok) throw new Error(`服务器响应 ${res.status}`);
+            return await res.json();
+        }
+
+        async function saveStockData(goods, staff) {
+            const res = await fetch(API_BASE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ goods, staff }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `服务器响应 ${res.status}`);
             }
+            return await res.json();
         }
 
-        function saveGoods(goods) {
-            localStorage.setItem('j_goods', JSON.stringify(goods));
-        }
+        // 初始化默认数据（同步，页面立即渲染），API 返回后再覆盖
+        let data = {
+            goods: JSON.parse(JSON.stringify(DEFAULT_GOODS)),
+            staff: JSON.parse(JSON.stringify(DEFAULT_STAFF)),
+        };
 
-        function saveStaff(staff) {
-            localStorage.setItem('j_staff', JSON.stringify(staff));
-        }
-
-        let data = loadData();
+        function showLoading() { document.getElementById('loadingOverlay').classList.add('show'); }
+        function hideLoading() { document.getElementById('loadingOverlay').classList.remove('show'); }
 
         // ========== 渲染 ==========
         function renderWarehouse() {
@@ -302,6 +365,8 @@
             document.getElementById(pageId).classList.add('show');
             document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
+            // 切换到刷卡页时自动刷新
+            if (pageId === 'swipe') { refreshSwipes(); }
         }
 
         // ========== 编辑弹窗 ==========
@@ -309,8 +374,8 @@
             document.getElementById('modalTitle').textContent = title;
             document.getElementById('modalBody').innerHTML = bodyHTML;
             document.getElementById('modalOverlay').classList.add('show');
-            document.getElementById('modalSave').onclick = () => {
-                onSave();
+            document.getElementById('modalSave').onclick = async () => {
+                await onSave();
                 closeModal();
             };
         }
@@ -334,15 +399,19 @@
                 <input type="text" id="editIcon" value="${item.icon}">
                 <label>库存数量</label>
                 <input type="number" id="editStock" value="${item.stock}" min="0">
-            `, () => {
+            `, async () => {
                 const name = document.getElementById('editName').value.trim();
                 const icon = document.getElementById('editIcon').value.trim();
                 const stock = parseInt(document.getElementById('editStock').value) || 0;
                 if (!name) { showToast('名称不能为空'); return; }
                 data.goods[index] = { icon: icon || '📦', name, stock };
-                saveGoods(data.goods);
-                renderWarehouse();
-                showToast('已保存');
+                try {
+                    await saveStockData(data.goods, data.staff);
+                    renderWarehouse();
+                    showToast('已保存 ✓');
+                } catch (e) {
+                    showToast('保存失败: ' + e.message);
+                }
             });
         }
 
@@ -359,15 +428,19 @@
                     <option value="all" ${person.status === 'all' ? 'selected' : ''}>全天在岗</option>
                     <option value="off" ${person.status === 'off' ? 'selected' : ''}>未到岗</option>
                 </select>
-            `, () => {
+            `, async () => {
                 const name = document.getElementById('editSName').value.trim();
                 const status = document.getElementById('editStatus').value;
                 if (!name) { showToast('姓名不能为空'); return; }
                 data.staff[index].name = name;
                 data.staff[index].status = status;
-                saveStaff(data.staff);
-                renderStaff();
-                showToast('已保存');
+                try {
+                    await saveStockData(data.goods, data.staff);
+                    renderStaff();
+                    showToast('已保存 ✓');
+                } catch (e) {
+                    showToast('保存失败: ' + e.message);
+                }
             });
         }
 
@@ -380,20 +453,114 @@
         }
 
         // ========== 重置数据 ==========
-        function resetAllData() {
+        async function resetAllData() {
             if (!confirm('确定恢复默认数据？当前所有修改将丢失。')) return;
             data.goods = JSON.parse(JSON.stringify(DEFAULT_GOODS));
             data.staff = JSON.parse(JSON.stringify(DEFAULT_STAFF));
-            saveGoods(data.goods);
-            saveStaff(data.staff);
-            renderWarehouse();
-            renderStaff();
-            showToast('已恢复默认数据');
+            try {
+                showLoading();
+                await saveStockData(data.goods, data.staff);
+                renderWarehouse();
+                renderStaff();
+                showToast('已恢复默认数据 ✓');
+            } catch (e) {
+                showToast('重置失败: ' + e.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // ========== 刷卡记录 ==========
+        let swipesData = [];
+
+        async function fetchSwipes() {
+            try {
+                const res = await fetch('/api/swipe');
+                if (!res.ok) throw new Error(`服务器响应 ${res.status}`);
+                const data = await res.json();
+                return data.swipes || [];
+            } catch (e) {
+                console.error('获取刷卡记录失败:', e);
+                return [];
+            }
+        }
+
+        function renderSwipes() {
+            const tbody = document.getElementById('swipeBody');
+            if (swipesData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#a0aec0;padding:40px;">暂无刷卡记录</td></tr>';
+            } else {
+                tbody.innerHTML = swipesData.map((s, i) => `
+                    <tr>
+                        <td>${swipesData.length - i}</td>
+                        <td><code>${escapeHtml(s.cardId)}</code></td>
+                        <td>${escapeHtml(s.name || '-')}</td>
+                        <td>${escapeHtml(s.time)}</td>
+                    </tr>
+                `).join('');
+            }
+            document.getElementById('swipeTotal').textContent = swipesData.length;
+        }
+
+        async function refreshSwipes() {
+            showLoading();
+            swipesData = await fetchSwipes();
+            renderSwipes();
+            hideLoading();
+            showToast('刷卡记录已刷新');
+        }
+
+        // CSV 导出 Excel
+        function exportCSV() {
+            if (swipesData.length === 0) { showToast('没有数据可导出'); return; }
+            // BOM 让 Excel 正确识别中文
+            const BOM = '﻿';
+            const header = '序号,卡号 (Card ID),姓名,刷卡时间\n';
+            const rows = swipesData.map((s, i) =>
+                `${i + 1},"${s.cardId}","${s.name || ''}","${s.time}"`
+            ).join('\n');
+            const csv = BOM + header + rows;
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `刷卡记录_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast(`已导出 ${swipesData.length} 条记录`);
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
         }
 
         // ========== 初始化 ==========
-        renderWarehouse();
-        renderStaff();
+        async function init() {
+            renderWarehouse();
+            renderStaff();
+            try {
+                showLoading();
+                const [serverData, swipesResult] = await Promise.all([
+                    fetchStockData(),
+                    fetchSwipes(),
+                ]);
+                if (serverData.goods) data.goods = serverData.goods;
+                if (serverData.staff) data.staff = serverData.staff;
+                swipesData = swipesResult;
+                renderWarehouse();
+                renderStaff();
+                renderSwipes();
+            } catch (e) {
+                showToast('⚠️ 无法连接服务器，使用本地默认数据');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        init();
     </script>
 </body>
 </html>
