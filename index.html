@@ -2,12 +2,13 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>仓库人员管理系统</title>
     <style>
         * {margin: 0; padding: 0; box-sizing: border-box; font-family: "微软雅黑";}
         body {display: flex; height: 100vh; background: #f5f7fa;}
         /* 侧边导航 */
-        .sidebar {width: 180px; background: #2d3748; padding-top: 40px;}
+        .sidebar {width: 180px; background: #2d3748; padding-top: 40px; flex-shrink: 0;}
         .nav-btn {
             display: block;
             width: 90%; margin: 10px auto; padding: 14px;
@@ -15,6 +16,8 @@
             border-radius: 6px; cursor: pointer;
         }
         .nav-btn.active {background: #3182ce;}
+        .nav-btn:hover {background: #5a6878;}
+        .nav-btn.active:hover {background: #2b6cb0;}
         /* 主内容区 */
         .main {flex: 1; padding: 30px; overflow: auto;}
         .page {display: none;}
@@ -23,14 +26,18 @@
 
         /* 仓库页面样式 */
         .warehouse-box {
-            display: grid; grid-template-columns: repeat(4, 180px);
+            display: grid; grid-template-columns: repeat(auto-fill, 180px);
             gap: 20px; margin-bottom: 30px;
         }
         .goods-item {
             background: white; padding: 15px; border-radius: 8px;
             text-align: center; box-shadow: 0 2px 8px #ddd;
+            cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
         }
+        .goods-item:hover {transform: translateY(-3px); box-shadow: 0 4px 16px #bbb;}
         .goods-icon {font-size: 48px; margin-bottom: 8px;}
+        .goods-name {font-size: 15px; color: #2d3748; margin-bottom: 4px;}
+        .goods-stock {font-size: 14px; color: #718096;}
         .total-stock {
             padding: 15px; background: #e6fffa; border-radius: 8px;
             font-size: 18px; font-weight: bold; color: #006d77;
@@ -39,13 +46,15 @@
         /* 人员页面样式 */
         .staff-box {
             display: grid;
-            grid-template-columns: repeat(8, 140px);
+            grid-template-columns: repeat(auto-fill, 140px);
             gap: 16px; margin-bottom: 30px;
         }
         .person-card {
             background: white; width: 140px; padding: 16px;
             border-radius: 10px; text-align: center; box-shadow: 0 2px 8px #ddd;
+            cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
         }
+        .person-card:hover {transform: translateY(-3px); box-shadow: 0 4px 16px #bbb;}
         .person-ani {
             font-size: 50px; margin-bottom: 8px;
             animation: walk 2s infinite alternate;
@@ -57,10 +66,57 @@
         .status-morning {color: #2f855a; font-size: 14px;}
         .status-night {color: #c53030; font-size: 14px;}
         .status-all {color: #3182ce; font-size: 14px;}
+        .status-off {color: #a0aec0; font-size: 14px;}
         .total-person {
             padding: 15px; background: #f0f4ff; border-radius: 8px;
             font-size: 18px; font-weight: bold; color: #2c5282;
         }
+
+        /* 编辑弹窗 */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%; background: rgba(0,0,0,0.4);
+            justify-content: center; align-items: center; z-index: 999;
+        }
+        .modal-overlay.show {display: flex;}
+        .modal {
+            background: white; padding: 30px; border-radius: 12px;
+            min-width: 320px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+        }
+        .modal h3 {margin-bottom: 20px; color: #2d3748;}
+        .modal label {display: block; margin-bottom: 6px; color: #4a5568; font-size: 14px;}
+        .modal input, .modal select {
+            width: 100%; padding: 10px 12px; margin-bottom: 16px;
+            border: 1px solid #cbd5e0; border-radius: 6px; font-size: 15px;
+        }
+        .modal-btns {display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px;}
+        .modal-btns button {
+            padding: 10px 24px; border: none; border-radius: 6px;
+            font-size: 15px; cursor: pointer;
+        }
+        .btn-save {background: #3182ce; color: white;}
+        .btn-save:hover {background: #2b6cb0;}
+        .btn-cancel {background: #e2e8f0; color: #2d3748;}
+        .btn-cancel:hover {background: #cbd5e0;}
+
+        /* 提示 toast */
+        .toast {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: #2f855a; color: white; padding: 12px 28px;
+            border-radius: 8px; font-size: 15px; opacity: 0;
+            transition: opacity 0.3s; z-index: 1000; pointer-events: none;
+        }
+        .toast.show {opacity: 1;}
+
+        /* 重置按钮 */
+        .reset-btn {
+            margin-top: 16px; padding: 8px 20px;
+            background: #e53e3e; color: white; border: none;
+            border-radius: 6px; cursor: pointer; font-size: 14px;
+        }
+        .reset-btn:hover {background: #c53030;}
+
+        .hint {font-size: 13px; color: #a0aec0; margin-bottom: 16px;}
     </style>
 </head>
 <body>
@@ -74,109 +130,270 @@
         <!-- 页面1：仓库 -->
         <div id="warehouse" class="page show">
             <h2>仓库货物货架</h2>
-            <div class="warehouse-box">
-                <div class="goods-item">
-                    <div class="goods-icon">📦</div>
-                    <div>钢材原料</div>
-                    <div>库存：126</div>
-                </div>
-                <div class="goods-item">
-                    <div class="goods-icon">🔩</div>
-                    <div>标准钢球</div>
-                    <div>库存：890</div>
-                </div>
-                <div class="goods-item">
-                    <div class="goods-icon">🛠️</div>
-                    <div>铸造模具</div>
-                    <div>库存：32</div>
-                </div>
-                <div class="goods-item">
-                    <div class="goods-icon">⚙️</div>
-                    <div>机械配件</div>
-                    <div>库存：157</div>
-                </div>
-                <div class="goods-item">
-                    <div class="goods-icon">🪨</div>
-                    <div>铸造砂料</div>
-                    <div>库存：640</div>
-                </div>
-                <div class="goods-item">
-                    <div class="goods-icon">🧰</div>
-                    <div>维修工具</div>
-                    <div>库存：48</div>
-                </div>
-            </div>
+            <p class="hint">💡 点击货物卡片可修改名称和库存</p>
+            <div class="warehouse-box" id="warehouseBox"></div>
             <div class="total-stock">
-                当前仓库货物总数量：<span id="allNum">1893</span> 件
+                当前仓库货物总数量：<span id="allNum">0</span> 件
             </div>
         </div>
 
         <!-- 页面2：人员到岗 -->
         <div id="staff" class="page">
-            <h2>员工今日到岗状态（共40人）</h2>
-            <div class="staff-box">
-                <!-- 年长：鸡大系列 20人 -->
-                <div class="person-card"><div class="person-ani">👷</div><h4>鸡大强</h4><p class="status-morning">早上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡大国</h4><p class="status-night">晚上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡大梅</h4><p class="status-all">全天在岗</p></div>
-                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡大海</h4><p class="status-morning">早上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷</div><h4>鸡大山</h4><p class="status-night">晚上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡大刚</h4><p class="status-all">全天在岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡大芬</h4><p class="status-morning">早上到岗</p></div>
-                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡大军</h4><p class="status-night">晚上到岗</p></div>
-
-                <div class="person-card"><div class="person-ani">👷</div><h4>鸡大林</h4><p class="status-all">全天在岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡大忠</h4><p class="status-morning">早上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡大秀</h4><p class="status-night">晚上到岗</p></div>
-                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡大福</h4><p class="status-all">全天在岗</p></div>
-                <div class="person-card"><div class="person-ani">👷</div><h4>鸡大荣</h4><p class="status-morning">早上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡大伟</h4><p class="status-night">晚上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡大莲</h4><p class="status-all">全天在岗</p></div>
-                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡大斌</h4><p class="status-morning">早上到岗</p></div>
-
-                <div class="person-card"><div class="person-ani">👷</div><h4>鸡大彪</h4><p class="status-night">晚上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡大祥</h4><p class="status-all">全天在岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡大芝</h4><p class="status-morning">早上到岗</p></div>
-                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡大坤</h4><p class="status-night">晚上到岗</p></div>
-
-                <!-- 年轻：鸡小系列 20人 -->
-                <div class="person-card"><div class="person-ani">👷</div><h4>鸡小宇</h4><p class="status-all">全天在岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡小航</h4><p class="status-morning">早上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡小婷</h4><p class="status-night">晚上到岗</p></div>
-                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡小泽</h4><p class="status-all">全天在岗</p></div>
-                <div class="person-card"><div class="person-ani">👷</div><h4>鸡小豪</h4><p class="status-morning">早上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡小凯</h4><p class="status-night">晚上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡小冉</h4><p class="status-all">全天在岗</p></div>
-                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡小辰</h4><p class="status-morning">早上到岗</p></div>
-
-                <div class="person-card"><div class="person-ani">👷</div><h4>鸡小硕</h4><p class="status-night">晚上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡小杨</h4><p class="status-all">全天在岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡小诺</h4><p class="status-morning">早上到岗</p></div>
-                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡小峰</h4><p class="status-night">晚上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷</div><h4>鸡小恒</h4><p class="status-all">全天在岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡小乐</h4><p class="status-morning">早上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡小晴</h4><p class="status-night">晚上到岗</p></div>
-                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡小川</h4><p class="status-all">全天在岗</p></div>
-
-                <div class="person-card"><div class="person-ani">👷</div><h4>鸡小帆</h4><p class="status-morning">早上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♂️</div><h4>鸡小源</h4><p class="status-night">晚上到岗</p></div>
-                <div class="person-card"><div class="person-ani">👷‍♀️</div><h4>鸡小萱</h4><p class="status-all">全天在岗</p></div>
-                <div class="person-card"><div class="person-ani">🧑‍🏭</div><h4>鸡小炎</h4><p class="status-morning">早上到岗</p></div>
-            </div>
+            <h2>员工今日到岗状态</h2>
+            <p class="hint">💡 点击人员卡片可修改到岗状态</p>
+            <div class="staff-box" id="staffBox"></div>
             <div class="total-person">
-                今日到岗总人数：<span id="staffCount">4</span> 人
+                今日到岗总人数：<span id="staffCount">0</span> 人
+                （共 <span id="staffTotal">0</span> 人）
+            </div>
+            <button class="reset-btn" onclick="resetAllData()">🔄 恢复默认数据</button>
+        </div>
+    </div>
+
+    <!-- 编辑弹窗 -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <h3 id="modalTitle">编辑</h3>
+            <div id="modalBody"></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal()">取消</button>
+                <button class="btn-save" id="modalSave">保存</button>
             </div>
         </div>
     </div>
 
+    <!-- Toast 提示 -->
+    <div class="toast" id="toast"></div>
+
     <script>
-        // 页面切换函数
-        function switchPage(pageId) {
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('show'))
-            document.getElementById(pageId).classList.add('show')
-            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'))
-            event.target.classList.add('active')
+        // ========== 默认数据 ==========
+        const DEFAULT_GOODS = [
+            { icon: '📦', name: '钢材原料', stock: 126 },
+            { icon: '🔩', name: '标准钢球', stock: 890 },
+            { icon: '🛠️', name: '铸造模具', stock: 32 },
+            { icon: '⚙️', name: '机械配件', stock: 157 },
+            { icon: '🪨', name: '铸造砂料', stock: 640 },
+            { icon: '🧰', name: '维修工具', stock: 48 },
+        ];
+
+        const DEFAULT_STAFF = [
+            // 年长：鸡大系列 20人
+            { icon: '👷', name: '鸡大强', status: 'morning' },
+            { icon: '👷‍♂️', name: '鸡大国', status: 'night' },
+            { icon: '👷‍♀️', name: '鸡大梅', status: 'all' },
+            { icon: '🧑‍🏭', name: '鸡大海', status: 'morning' },
+            { icon: '👷', name: '鸡大山', status: 'night' },
+            { icon: '👷‍♂️', name: '鸡大刚', status: 'all' },
+            { icon: '👷‍♀️', name: '鸡大芬', status: 'morning' },
+            { icon: '🧑‍🏭', name: '鸡大军', status: 'night' },
+            { icon: '👷', name: '鸡大林', status: 'all' },
+            { icon: '👷‍♂️', name: '鸡大忠', status: 'morning' },
+            { icon: '👷‍♀️', name: '鸡大秀', status: 'night' },
+            { icon: '🧑‍🏭', name: '鸡大福', status: 'all' },
+            { icon: '👷', name: '鸡大荣', status: 'morning' },
+            { icon: '👷‍♂️', name: '鸡大伟', status: 'night' },
+            { icon: '👷‍♀️', name: '鸡大莲', status: 'all' },
+            { icon: '🧑‍🏭', name: '鸡大斌', status: 'morning' },
+            { icon: '👷', name: '鸡大彪', status: 'night' },
+            { icon: '👷‍♂️', name: '鸡大祥', status: 'all' },
+            { icon: '👷‍♀️', name: '鸡大芝', status: 'morning' },
+            { icon: '🧑‍🏭', name: '鸡大坤', status: 'night' },
+            // 年轻：鸡小系列 20人
+            { icon: '👷', name: '鸡小宇', status: 'all' },
+            { icon: '👷‍♂️', name: '鸡小航', status: 'morning' },
+            { icon: '👷‍♀️', name: '鸡小婷', status: 'night' },
+            { icon: '🧑‍🏭', name: '鸡小泽', status: 'all' },
+            { icon: '👷', name: '鸡小豪', status: 'morning' },
+            { icon: '👷‍♂️', name: '鸡小凯', status: 'night' },
+            { icon: '👷‍♀️', name: '鸡小冉', status: 'all' },
+            { icon: '🧑‍🏭', name: '鸡小辰', status: 'morning' },
+            { icon: '👷', name: '鸡小硕', status: 'night' },
+            { icon: '👷‍♂️', name: '鸡小杨', status: 'all' },
+            { icon: '👷‍♀️', name: '鸡小诺', status: 'morning' },
+            { icon: '🧑‍🏭', name: '鸡小峰', status: 'night' },
+            { icon: '👷', name: '鸡小恒', status: 'all' },
+            { icon: '👷‍♂️', name: '鸡小乐', status: 'morning' },
+            { icon: '👷‍♀️', name: '鸡小晴', status: 'night' },
+            { icon: '🧑‍🏭', name: '鸡小川', status: 'all' },
+            { icon: '👷', name: '鸡小帆', status: 'morning' },
+            { icon: '👷‍♂️', name: '鸡小源', status: 'night' },
+            { icon: '👷‍♀️', name: '鸡小萱', status: 'all' },
+            { icon: '🧑‍🏭', name: '鸡小炎', status: 'morning' },
+        ];
+
+        const STATUS_MAP = {
+            morning: { text: '早上到岗', cls: 'status-morning' },
+            night:   { text: '晚上到岗', cls: 'status-night' },
+            all:     { text: '全天在岗', cls: 'status-all' },
+            off:     { text: '未到岗',   cls: 'status-off' },
+        };
+
+        // ========== 数据读写 ==========
+        function loadData() {
+            try {
+                const g = localStorage.getItem('j_goods');
+                const s = localStorage.getItem('j_staff');
+                return {
+                    goods: g ? JSON.parse(g) : JSON.parse(JSON.stringify(DEFAULT_GOODS)),
+                    staff: s ? JSON.parse(s) : JSON.parse(JSON.stringify(DEFAULT_STAFF)),
+                };
+            } catch (e) {
+                return {
+                    goods: JSON.parse(JSON.stringify(DEFAULT_GOODS)),
+                    staff: JSON.parse(JSON.stringify(DEFAULT_STAFF)),
+                };
+            }
         }
+
+        function saveGoods(goods) {
+            localStorage.setItem('j_goods', JSON.stringify(goods));
+        }
+
+        function saveStaff(staff) {
+            localStorage.setItem('j_staff', JSON.stringify(staff));
+        }
+
+        let data = loadData();
+
+        // ========== 渲染 ==========
+        function renderWarehouse() {
+            const box = document.getElementById('warehouseBox');
+            box.innerHTML = '';
+            data.goods.forEach((item, i) => {
+                const div = document.createElement('div');
+                div.className = 'goods-item';
+                div.onclick = () => editGoods(i);
+                div.innerHTML = `
+                    <div class="goods-icon">${item.icon}</div>
+                    <div class="goods-name">${item.name}</div>
+                    <div class="goods-stock">库存：${item.stock}</div>
+                `;
+                box.appendChild(div);
+            });
+            // 总数
+            const total = data.goods.reduce((sum, g) => sum + Number(g.stock), 0);
+            document.getElementById('allNum').textContent = total;
+        }
+
+        function renderStaff() {
+            const box = document.getElementById('staffBox');
+            box.innerHTML = '';
+            data.staff.forEach((person, i) => {
+                const s = STATUS_MAP[person.status] || STATUS_MAP.off;
+                const div = document.createElement('div');
+                div.className = 'person-card';
+                div.onclick = () => editStaff(i);
+                div.innerHTML = `
+                    <div class="person-ani">${person.icon}</div>
+                    <h4>${person.name}</h4>
+                    <p class="${s.cls}">${s.text}</p>
+                `;
+                box.appendChild(div);
+            });
+            // 到岗人数
+            const onDuty = data.staff.filter(p => p.status !== 'off').length;
+            document.getElementById('staffCount').textContent = onDuty;
+            document.getElementById('staffTotal').textContent = data.staff.length;
+        }
+
+        // ========== 页面切换 ==========
+        function switchPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('show'));
+            document.getElementById(pageId).classList.add('show');
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        // ========== 编辑弹窗 ==========
+        function openModal(title, bodyHTML, onSave) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalBody').innerHTML = bodyHTML;
+            document.getElementById('modalOverlay').classList.add('show');
+            document.getElementById('modalSave').onclick = () => {
+                onSave();
+                closeModal();
+            };
+        }
+
+        function closeModal() {
+            document.getElementById('modalOverlay').classList.remove('show');
+        }
+
+        // 点击遮罩关闭
+        document.getElementById('modalOverlay').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeModal();
+        });
+
+        // 编辑货物
+        function editGoods(index) {
+            const item = data.goods[index];
+            openModal('编辑货物', `
+                <label>货物名称</label>
+                <input type="text" id="editName" value="${item.name}">
+                <label>图标（emoji）</label>
+                <input type="text" id="editIcon" value="${item.icon}">
+                <label>库存数量</label>
+                <input type="number" id="editStock" value="${item.stock}" min="0">
+            `, () => {
+                const name = document.getElementById('editName').value.trim();
+                const icon = document.getElementById('editIcon').value.trim();
+                const stock = parseInt(document.getElementById('editStock').value) || 0;
+                if (!name) { showToast('名称不能为空'); return; }
+                data.goods[index] = { icon: icon || '📦', name, stock };
+                saveGoods(data.goods);
+                renderWarehouse();
+                showToast('已保存');
+            });
+        }
+
+        // 编辑人员状态
+        function editStaff(index) {
+            const person = data.staff[index];
+            openModal('修改到岗状态 - ' + person.name, `
+                <label>姓名</label>
+                <input type="text" id="editSName" value="${person.name}">
+                <label>到岗状态</label>
+                <select id="editStatus">
+                    <option value="morning" ${person.status === 'morning' ? 'selected' : ''}>早上到岗</option>
+                    <option value="night" ${person.status === 'night' ? 'selected' : ''}>晚上到岗</option>
+                    <option value="all" ${person.status === 'all' ? 'selected' : ''}>全天在岗</option>
+                    <option value="off" ${person.status === 'off' ? 'selected' : ''}>未到岗</option>
+                </select>
+            `, () => {
+                const name = document.getElementById('editSName').value.trim();
+                const status = document.getElementById('editStatus').value;
+                if (!name) { showToast('姓名不能为空'); return; }
+                data.staff[index].name = name;
+                data.staff[index].status = status;
+                saveStaff(data.staff);
+                renderStaff();
+                showToast('已保存');
+            });
+        }
+
+        // ========== Toast 提示 ==========
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 1800);
+        }
+
+        // ========== 重置数据 ==========
+        function resetAllData() {
+            if (!confirm('确定恢复默认数据？当前所有修改将丢失。')) return;
+            data.goods = JSON.parse(JSON.stringify(DEFAULT_GOODS));
+            data.staff = JSON.parse(JSON.stringify(DEFAULT_STAFF));
+            saveGoods(data.goods);
+            saveStaff(data.staff);
+            renderWarehouse();
+            renderStaff();
+            showToast('已恢复默认数据');
+        }
+
+        // ========== 初始化 ==========
+        renderWarehouse();
+        renderStaff();
     </script>
 </body>
 </html>
