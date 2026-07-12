@@ -180,7 +180,8 @@
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:25px;">
                 <h2 style="margin-bottom:0;">📡 RFID 刷卡记录</h2>
                 <div style="display:flex;gap:10px;">
-                    <button class="btn-export" onclick="exportCSV()">📥 导出 Excel (CSV)</button>
+                    <button class="btn-export" onclick="exportXLS()" title="推荐！中文不乱码">📥 导出 Excel</button>
+                    <button class="btn-export" style="background:#718096;" onclick="exportCSV()" title="UTF-8 格式">📄 导出 CSV</button>
                     <button class="btn-refresh" onclick="refreshSwipes()">🔄 刷新</button>
                 </div>
             </div>
@@ -472,6 +473,34 @@
 
         // ========== 刷卡记录 ==========
         let swipesData = [];
+        const LS_KEY_SWIPES = 'rfid_swipes_backup';
+        const LS_KEY_TIME = 'rfid_swipes_time';
+
+        // 从 localStorage 恢复数据（快速显示，不用等网络）
+        function loadSwipesFromLocal() {
+            try {
+                const saved = localStorage.getItem(LS_KEY_SWIPES);
+                if (saved) {
+                    const arr = JSON.parse(saved);
+                    if (Array.isArray(arr) && arr.length > 0) {
+                        swipesData = arr;
+                        renderSwipes();
+                        return true;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            return false;
+        }
+
+        // 把刷卡数据存到 localStorage
+        function saveSwipesToLocal() {
+            try {
+                localStorage.setItem(LS_KEY_SWIPES, JSON.stringify(swipesData));
+                localStorage.setItem(LS_KEY_TIME, new Date().toISOString());
+            } catch (e) {
+                console.warn('localStorage 存储空间不足');
+            }
+        }
 
         async function fetchSwipes() {
             try {
@@ -506,29 +535,61 @@
             showLoading();
             swipesData = await fetchSwipes();
             renderSwipes();
+            saveSwipesToLocal();  // 自动备份到浏览器本地
             hideLoading();
             showToast('刷卡记录已刷新');
         }
 
-        // CSV 导出 Excel
+        // CSV 导出 (UTF-8 BOM)
         function exportCSV() {
             if (swipesData.length === 0) { showToast('没有数据可导出'); return; }
-            // BOM 让 Excel 正确识别中文
+            // ﻿ 是 UTF-8 BOM，Excel 靠它识别中文，不用字面字符以防被编辑器吃掉
             const BOM = '﻿';
             const header = '序号,卡号 (Card ID),姓名,刷卡时间\n';
-            const rows = swipesData.map((s, i) =>
-                `${i + 1},"${s.cardId}","${s.name || ''}","${s.time}"`
-            ).join('\n');
+            const rows = swipesData.map((s, i) => {
+                // 时间格式化：把 ISO 时间转成更可读的格式，去掉 T 和毫秒
+                const timeStr = (s.time || '').replace('T', ' ').replace(/\.\d{3}Z/, '').replace('Z', '');
+                return `${i + 1},"${s.cardId}","${s.name || ''}","${timeStr}"`;
+            }).join('\n');
             const csv = BOM + header + rows;
 
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `刷卡记录_${new Date().toISOString().slice(0, 10)}.csv`;
+            const now = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+            a.download = `刷卡记录_${dateStr}.csv`;
             a.click();
             URL.revokeObjectURL(url);
-            showToast(`已导出 ${swipesData.length} 条记录`);
+            showToast(`已导出 ${swipesData.length} 条记录 (CSV)`);
+        }
+
+        // Excel 导出 (HTML 格式 .xls，中文兼容性最好)
+        function exportXLS() {
+            if (swipesData.length === 0) { showToast('没有数据可导出'); return; }
+            const rows = swipesData.map((s, i) => {
+                const timeStr = (s.time || '').replace('T', ' ').replace(/\.\d{3}Z/, '').replace('Z', '');
+                return `<tr><td>${i + 1}</td><td>${escapeHtml(s.cardId)}</td><td>${escapeHtml(s.name || '')}</td><td>${escapeHtml(timeStr)}</td></tr>`;
+            }).join('');
+            const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>刷卡记录</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>
+<body><table border="1">
+<tr><th>序号</th><th>卡号 (Card ID)</th><th>姓名</th><th>刷卡时间</th></tr>
+${rows}
+</table></body></html>`;
+            const blob = new Blob(['﻿' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const now = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+            a.download = `刷卡记录_${dateStr}.xls`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast(`已导出 ${swipesData.length} 条记录 (Excel)`);
         }
 
         function escapeHtml(str) {
@@ -541,6 +602,11 @@
         async function init() {
             renderWarehouse();
             renderStaff();
+            // 先从本地恢复刷卡记录（秒开，不怕关机）
+            const hasLocal = loadSwipesFromLocal();
+            if (hasLocal) {
+                document.getElementById('swipeTotal').textContent = swipesData.length;
+            }
             try {
                 showLoading();
                 const [serverData, swipesResult] = await Promise.all([
@@ -550,17 +616,30 @@
                 if (serverData.goods) data.goods = serverData.goods;
                 if (serverData.staff) data.staff = serverData.staff;
                 swipesData = swipesResult;
+                saveSwipesToLocal();  // 服务器数据覆盖本地，保证最新
                 renderWarehouse();
                 renderStaff();
                 renderSwipes();
             } catch (e) {
-                showToast('⚠️ 无法连接服务器，使用本地默认数据');
+                showToast('⚠️ 无法连接服务器，使用本地缓存数据');
             } finally {
                 hideLoading();
             }
         }
 
         init();
+
+        // ========== 关闭页面前自动保存 ==========
+        window.addEventListener('beforeunload', (e) => {
+            // 每次关闭/刷新前自动存到本地
+            saveSwipesToLocal();
+            // 如果有数据，提醒用户导出
+            if (swipesData.length > 0) {
+                e.preventDefault();
+                e.returnValue = '还有刷卡数据未导出，确定离开吗？';
+                return e.returnValue;
+            }
+        });
     </script>
 </body>
 </html>
