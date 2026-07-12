@@ -66,10 +66,16 @@ async function getCards() {
   return memCards;
 }
 
+// 规范化卡号：去空格、去横线、转大写，统一比较
+function normalizeCardId(id) {
+  return (id || '').replace(/[\s\-_]/g, '').toUpperCase();
+}
+
 // 根据 cardId 查绑定名
 async function lookupCardName(cardId) {
   const cards = await getCards();
-  const found = cards.find(c => c.cardId.toUpperCase() === cardId.toUpperCase());
+  const norm = normalizeCardId(cardId);
+  const found = cards.find(c => normalizeCardId(c.cardId) === norm);
   return found ? found.name : null;
 }
 
@@ -208,11 +214,9 @@ export default async function handler(req, res) {
 
       const cardId = String(input.cardId).trim();
 
-      // 自动查卡片绑定表补名字
-      let name = input.name || '';
-      if (!name) {
-        name = await lookupCardName(cardId) || '';
-      }
+      // 以网页端卡片绑定为准（覆盖 ESP32 硬编码名字）
+      const boundName = await lookupCardName(cardId);
+      const name = boundName || input.name || '';
 
       const record = {
         cardId,

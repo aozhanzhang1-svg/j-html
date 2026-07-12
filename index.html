@@ -738,8 +738,9 @@ ${rows}
             if (!cardId) { showToast('请输入卡号 UID'); return; }
             if (!name) { showToast('请输入姓名'); return; }
 
-            // 检查是否已存在
-            const exists = cardsData.find(c => c.cardId.toUpperCase() === cardId.toUpperCase());
+            // 规范化比较：忽略空格、横线、大小写
+            const normId = (id) => (id || '').replace(/[\s\-_]/g, '').toUpperCase();
+            const exists = cardsData.find(c => normId(c.cardId) === normId(cardId));
             if (exists && !confirm(`卡号 ${cardId} 已绑定为 "${exists.name}"，确定更新为 "${name}" 吗？`)) return;
 
             try {

@@ -11,6 +11,11 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+// 规范化卡号：去空格、去横线、转大写
+function normId(id) {
+  return (id || '').replace(/[\s\-_]/g, '').toUpperCase();
+}
+
 // 预置默认绑定（与 ESP32 中 cardList 一致）
 const DEFAULT_CARDS = [
   { cardId: '4A 8B 32 16', name: 'fu_guan' },
@@ -83,12 +88,13 @@ export default async function handler(req, res) {
       }
 
       const cards = await getCards();
-      const cardId = String(input.cardId).trim().toUpperCase();
+      const cardId = normId(String(input.cardId));
       const name = String(input.name).trim();
 
-      // 查找是否已存在（同卡号则更新）
-      const idx = cards.findIndex(c => c.cardId.toUpperCase() === cardId);
+      // 查找是否已存在（规范化比较，忽略空格和大小写）
+      const idx = cards.findIndex(c => normId(c.cardId) === cardId);
       if (idx >= 0) {
+        cards[idx].cardId = cardId;  // 统一格式
         cards[idx].name = name;
       } else {
         cards.push({ cardId, name });
@@ -114,8 +120,8 @@ export default async function handler(req, res) {
       }
 
       const cards = await getCards();
-      const cardId = String(input.cardId).trim().toUpperCase();
-      const filtered = cards.filter(c => c.cardId.toUpperCase() !== cardId);
+      const cardId = normId(String(input.cardId));
+      const filtered = cards.filter(c => normId(c.cardId) !== cardId);
 
       if (filtered.length === cards.length) {
         return json(res, 404, { error: '未找到该卡片' });
