@@ -530,6 +530,7 @@
         let swipesData = [];
         const LS_KEY_SWIPES = 'rfid_swipes_backup';
         const LS_KEY_TIME = 'rfid_swipes_time';
+        const LS_KEY_CARDS = 'rfid_cards_backup';  // 卡片绑定本地缓存
 
         // 从 localStorage 恢复数据（快速显示，不用等网络）
         function loadSwipesFromLocal() {
@@ -557,6 +558,40 @@
             }
         }
 
+        // 卡片绑定 → localStorage
+        function loadCardsFromLocal() {
+            try {
+                const saved = localStorage.getItem(LS_KEY_CARDS);
+                if (saved) {
+                    const arr = JSON.parse(saved);
+                    if (Array.isArray(arr)) {
+                        cardsData = arr;
+                        renderCards();
+                        return true;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            return false;
+        }
+
+        function saveCardsToLocal() {
+            try {
+                localStorage.setItem(LS_KEY_CARDS, JSON.stringify(cardsData));
+            } catch (e) {
+                console.warn('localStorage 存储空间不足');
+            }
+        }
+
+        // 规范化卡号比较（忽略空格、横线、大小写）
+        const normCardId = (id) => (id || '').replace(/[\s\-_]/g, '').toUpperCase();
+
+        // 根据卡号查本地绑定名（纯前端查表，不依赖服务器编码）
+        function lookupCardNameLocal(cardId) {
+            const norm = normCardId(cardId);
+            const found = cardsData.find(c => normCardId(c.cardId) === norm);
+            return found ? found.name : null;
+        }
+
         async function fetchSwipes() {
             try {
                 const res = await fetch('/api/swipe');
@@ -574,14 +609,18 @@
             if (swipesData.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#a0aec0;padding:40px;">暂无刷卡记录</td></tr>';
             } else {
-                tbody.innerHTML = swipesData.map((s, i) => `
+                tbody.innerHTML = swipesData.map((s, i) => {
+                    // 纯前端查本地卡片绑定表 → 显示中文名
+                    const localName = lookupCardNameLocal(s.cardId);
+                    const displayName = localName || s.name || '-';
+                    return `
                     <tr>
                         <td>${swipesData.length - i}</td>
                         <td><code>${escapeHtml(s.cardId)}</code></td>
-                        <td>${escapeHtml(s.name || '-')}</td>
+                        <td><strong>${escapeHtml(displayName)}</strong></td>
                         <td>${escapeHtml(s.time)}</td>
-                    </tr>
-                `).join('');
+                    </tr>`;
+                }).join('');
             }
             document.getElementById('swipeTotal').textContent = swipesData.length;
         }
@@ -726,9 +765,11 @@ ${rows}
             const newName = document.getElementById(`cardNameInput-${i}`).value.trim();
             if (!newName) { showToast('姓名不能为空'); return; }
             cardsData[i].name = newName;
+            saveCardsToLocal();  // 立刻存本地
             await saveCardsToServer(cardsData[i].cardId, newName);
             cancelEditCard(i);
             document.getElementById(`cardNameText-${i}`).textContent = newName;
+            renderSwipes();  // 刷新刷卡记录表的名字显示
             showToast('已更新 ✓');
         }
 
@@ -739,8 +780,7 @@ ${rows}
             if (!name) { showToast('请输入姓名'); return; }
 
             // 规范化比较：忽略空格、横线、大小写
-            const normId = (id) => (id || '').replace(/[\s\-_]/g, '').toUpperCase();
-            const exists = cardsData.find(c => normId(c.cardId) === normId(cardId));
+            const exists = cardsData.find(c => normCardId(c.cardId) === normCardId(cardId));
             if (exists && !confirm(`卡号 ${cardId} 已绑定为 "${exists.name}"，确定更新为 "${name}" 吗？`)) return;
 
             try {
@@ -753,7 +793,9 @@ ${rows}
                 if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
                 const result = await res.json();
                 cardsData = await fetchCards();
+                saveCardsToLocal();  // 本地也存一份
                 renderCards();
+                renderSwipes();  // 刷新刷卡记录表
                 document.getElementById('newCardId').value = '';
                 document.getElementById('newCardName').value = '';
                 showToast(result.action === 'updated' ? '已更新 ✓' : '已添加 ✓');
@@ -784,7 +826,9 @@ ${rows}
                 });
                 if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
                 cardsData = await fetchCards();
+                saveCardsToLocal();
                 renderCards();
+                renderSwipes();
                 showToast('已删除 ✓');
             } catch (e) {
                 showToast('删除失败: ' + e.message);
@@ -796,6 +840,7 @@ ${rows}
         async function refreshCards() {
             showLoading();
             cardsData = await fetchCards();
+            saveCardsToLocal();
             renderCards();
             hideLoading();
             showToast('卡片绑定已刷新');
@@ -811,9 +856,10 @@ ${rows}
         async function init() {
             renderWarehouse();
             renderStaff();
-            // 先从本地恢复刷卡记录（秒开，不怕关机）
-            const hasLocal = loadSwipesFromLocal();
-            if (hasLocal) {
+            // 先从本地恢复（秒开，不怕关机，不怕编码问题）
+            const hasLocalSwipes = loadSwipesFromLocal();
+            const hasLocalCards = loadCardsFromLocal();
+            if (hasLocalSwipes) {
                 document.getElementById('swipeTotal').textContent = swipesData.length;
             }
             try {
@@ -826,8 +872,12 @@ ${rows}
                 if (serverData.goods) data.goods = serverData.goods;
                 if (serverData.staff) data.staff = serverData.staff;
                 swipesData = swipesResult;
-                cardsData = cardsResult;
-                saveSwipesToLocal();  // 服务器数据覆盖本地，保证最新
+                // 服务器卡片数据合并到本地（服务器数据优先）
+                if (cardsResult && cardsResult.length > 0) {
+                    cardsData = cardsResult;
+                }
+                saveSwipesToLocal();
+                saveCardsToLocal();
                 renderWarehouse();
                 renderStaff();
                 renderSwipes();

@@ -85,7 +85,7 @@ const corsHeaders = {
 };
 
 function json(res, status, body) {
-  res.writeHead(status, { ...corsHeaders, 'Content-Type': 'application/json' });
+  res.writeHead(status, { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
 }
 
