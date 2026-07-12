@@ -142,6 +142,23 @@
         .btn-refresh {padding: 10px 20px; background: #3182ce; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;}
         .btn-refresh:hover {background: #2b6cb0;}
         .total-swipe {padding: 15px; background: #f0f4ff; border-radius: 8px; font-size: 18px; font-weight: bold; color: #2c5282;}
+        /* 卡片绑定 */
+        .card-form {display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end;}
+        .card-form label {font-size: 14px; color: #4a5568; display: block; margin-bottom: 4px;}
+        .card-form input {padding: 10px 12px; border: 1px solid #cbd5e0; border-radius: 6px; font-size: 15px; width: 180px;}
+        .card-form .btn-add {padding: 10px 24px; background: #38a169; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; height: 42px;}
+        .card-form .btn-add:hover {background: #2f855a;}
+        .card-table-wrap {background: white; border-radius: 10px; box-shadow: 0 2px 8px #ddd; overflow: auto; margin-bottom: 20px;}
+        .card-table {width: 100%; border-collapse: collapse; font-size: 14px;}
+        .card-table th {background: #2d3748; color: white; padding: 12px 16px; text-align: left; position: sticky; top: 0;}
+        .card-table td {padding: 10px 16px; border-bottom: 1px solid #e2e8f0;}
+        .card-table code {background: #edf2f7; padding: 2px 8px; border-radius: 4px; font-size: 13px;}
+        .btn-sm {padding: 4px 12px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; margin-right: 4px;}
+        .btn-edit-sm {background: #3182ce; color: white;}
+        .btn-edit-sm:hover {background: #2b6cb0;}
+        .btn-del-sm {background: #e53e3e; color: white;}
+        .btn-del-sm:hover {background: #c53030;}
+        .inline-edit input {padding: 4px 8px; border: 1px solid #3182ce; border-radius: 4px; font-size: 13px;}
     </style>
 </head>
 <body>
@@ -150,6 +167,7 @@
         <button class="nav-btn active" onclick="switchPage('warehouse')">可视化仓库</button>
         <button class="nav-btn" onclick="switchPage('staff')">人员到岗</button>
         <button class="nav-btn" onclick="switchPage('swipe')">📡 刷卡记录</button>
+        <button class="nav-btn" onclick="switchPage('cards')">💳 卡片绑定</button>
     </div>
 
     <div class="main">
@@ -183,9 +201,10 @@
                     <button class="btn-export" onclick="exportXLS()" title="推荐！中文不乱码">📥 导出 Excel</button>
                     <button class="btn-export" style="background:#718096;" onclick="exportCSV()" title="UTF-8 格式">📄 导出 CSV</button>
                     <button class="btn-refresh" onclick="refreshSwipes()">🔄 刷新</button>
+                    <button class="btn-refresh" style="background:#e53e3e;" onclick="clearAllSwipes()">🗑 清空记录</button>
                 </div>
             </div>
-            <p class="hint">💡 ESP32 通过 <code>POST /api/swipe</code> 推送刷卡数据，此页面自动显示最新记录</p>
+            <p class="hint">💡 ESP32 通过 <code>POST /api/swipe</code> 推送刷卡数据，云端最多保留 500 条，建议定期导出 Excel 后清空旧记录</p>
             <div class="swipe-table-wrap">
                 <table class="swipe-table">
                     <thead>
@@ -203,6 +222,41 @@
             </div>
             <div class="total-swipe" style="margin-top:16px;">
                 总刷卡次数：<span id="swipeTotal">0</span> 次
+            </div>
+        </div>
+
+        <!-- 页面4：卡片绑定 -->
+        <div id="cards" class="page">
+            <h2>💳 卡片绑定管理</h2>
+            <p class="hint">💡 绑定卡号和人名后，刷卡时自动识别姓名并同步到人员到岗</p>
+            <div class="card-form">
+                <div>
+                    <label>卡号 UID</label>
+                    <input type="text" id="newCardId" placeholder="例如: 4A 8B 32 16">
+                </div>
+                <div>
+                    <label>姓名</label>
+                    <input type="text" id="newCardName" placeholder="例如: fu_guan">
+                </div>
+                <button class="btn-add" onclick="addCardBinding()">➕ 添加绑定</button>
+            </div>
+            <div class="card-table-wrap">
+                <table class="card-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>卡号 UID</th>
+                            <th>姓名</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cardsBody">
+                        <tr><td colspan="4" style="text-align:center;color:#a0aec0;padding:40px;">暂无卡片绑定，请添加</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="total-swipe">
+                已绑定卡片：<span id="cardsTotal">0</span> 张
             </div>
         </div>
     </div>
@@ -368,6 +422,7 @@
             event.target.classList.add('active');
             // 切换到刷卡页时自动刷新
             if (pageId === 'swipe') { refreshSwipes(); }
+            if (pageId === 'cards') { refreshCards(); }
         }
 
         // ========== 编辑弹窗 ==========
@@ -540,6 +595,23 @@
             showToast('刷卡记录已刷新');
         }
 
+        async function clearAllSwipes() {
+            if (!confirm('⚠️ 确定清空云端全部刷卡记录吗？\n\n建议先导出 Excel 备份！\n本地浏览器缓存不受影响。')) return;
+            try {
+                showLoading();
+                const res = await fetch('/api/swipe', { method: 'DELETE' });
+                if (!res.ok) throw new Error('清空失败');
+                swipesData = [];
+                renderSwipes();
+                saveSwipesToLocal();
+                showToast('云端记录已清空 ✓（本地缓存仍在）');
+            } catch (e) {
+                showToast('清空失败: ' + e.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
         // CSV 导出 (UTF-8 BOM)
         function exportCSV() {
             if (swipesData.length === 0) { showToast('没有数据可导出'); return; }
@@ -559,7 +631,7 @@
             a.href = url;
             const now = new Date();
             const pad = n => String(n).padStart(2, '0');
-            const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+            const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
             a.download = `刷卡记录_${dateStr}.csv`;
             a.click();
             URL.revokeObjectURL(url);
@@ -585,11 +657,147 @@ ${rows}
             a.href = url;
             const now = new Date();
             const pad = n => String(n).padStart(2, '0');
-            const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+            const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
             a.download = `刷卡记录_${dateStr}.xls`;
             a.click();
             URL.revokeObjectURL(url);
             showToast(`已导出 ${swipesData.length} 条记录 (Excel)`);
+        }
+
+        // ========== 卡片绑定管理 ==========
+        let cardsData = [];
+
+        async function fetchCards() {
+            try {
+                const res = await fetch('/api/cards');
+                if (!res.ok) throw new Error(`服务器响应 ${res.status}`);
+                const data = await res.json();
+                return data.cards || [];
+            } catch (e) {
+                console.error('获取卡片绑定失败:', e);
+                return [];
+            }
+        }
+
+        function renderCards() {
+            const tbody = document.getElementById('cardsBody');
+            if (cardsData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#a0aec0;padding:40px;">暂无卡片绑定，请添加</td></tr>';
+            } else {
+                tbody.innerHTML = cardsData.map((c, i) => `
+                    <tr>
+                        <td>${i + 1}</td>
+                        <td><code>${escapeHtml(c.cardId)}</code></td>
+                        <td id="cardName-${i}">
+                            <span id="cardNameText-${i}">${escapeHtml(c.name)}</span>
+                            <input id="cardNameInput-${i}" type="text" value="${escapeHtml(c.name)}" style="display:none;padding:4px 8px;border:1px solid #3182ce;border-radius:4px;font-size:13px;width:120px;">
+                        </td>
+                        <td>
+                            <button class="btn-sm btn-edit-sm" id="cardEditBtn-${i}" onclick="startEditCard(${i})">✏️ 编辑</button>
+                            <button class="btn-sm btn-edit-sm" id="cardSaveBtn-${i}" onclick="saveEditCard(${i})" style="display:none;">💾 保存</button>
+                            <button class="btn-sm btn-edit-sm" id="cardCancelBtn-${i}" onclick="cancelEditCard(${i})" style="display:none;background:#a0aec0;">取消</button>
+                            <button class="btn-sm btn-del-sm" onclick="deleteCardBinding(${i})">🗑 删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+            document.getElementById('cardsTotal').textContent = cardsData.length;
+        }
+
+        function startEditCard(i) {
+            document.getElementById(`cardNameText-${i}`).style.display = 'none';
+            document.getElementById(`cardNameInput-${i}`).style.display = 'inline-block';
+            document.getElementById(`cardEditBtn-${i}`).style.display = 'none';
+            document.getElementById(`cardSaveBtn-${i}`).style.display = 'inline-block';
+            document.getElementById(`cardCancelBtn-${i}`).style.display = 'inline-block';
+            document.getElementById(`cardNameInput-${i}`).focus();
+        }
+
+        function cancelEditCard(i) {
+            document.getElementById(`cardNameText-${i}`).style.display = 'inline';
+            document.getElementById(`cardNameInput-${i}`).style.display = 'none';
+            document.getElementById(`cardEditBtn-${i}`).style.display = 'inline-block';
+            document.getElementById(`cardSaveBtn-${i}`).style.display = 'none';
+            document.getElementById(`cardCancelBtn-${i}`).style.display = 'none';
+            document.getElementById(`cardNameInput-${i}`).value = cardsData[i].name;
+        }
+
+        async function saveEditCard(i) {
+            const newName = document.getElementById(`cardNameInput-${i}`).value.trim();
+            if (!newName) { showToast('姓名不能为空'); return; }
+            cardsData[i].name = newName;
+            await saveCardsToServer(cardsData[i].cardId, newName);
+            cancelEditCard(i);
+            document.getElementById(`cardNameText-${i}`).textContent = newName;
+            showToast('已更新 ✓');
+        }
+
+        async function addCardBinding() {
+            const cardId = document.getElementById('newCardId').value.trim();
+            const name = document.getElementById('newCardName').value.trim();
+            if (!cardId) { showToast('请输入卡号 UID'); return; }
+            if (!name) { showToast('请输入姓名'); return; }
+
+            // 检查是否已存在
+            const exists = cardsData.find(c => c.cardId.toUpperCase() === cardId.toUpperCase());
+            if (exists && !confirm(`卡号 ${cardId} 已绑定为 "${exists.name}"，确定更新为 "${name}" 吗？`)) return;
+
+            try {
+                showLoading();
+                const res = await fetch('/api/cards', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cardId, name }),
+                });
+                if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+                const result = await res.json();
+                cardsData = await fetchCards();
+                renderCards();
+                document.getElementById('newCardId').value = '';
+                document.getElementById('newCardName').value = '';
+                showToast(result.action === 'updated' ? '已更新 ✓' : '已添加 ✓');
+            } catch (e) {
+                showToast('添加失败: ' + e.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function saveCardsToServer(cardId, name) {
+            await fetch('/api/cards', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cardId, name }),
+            });
+        }
+
+        async function deleteCardBinding(i) {
+            const card = cardsData[i];
+            if (!confirm(`确定删除卡号 ${card.cardId} (${card.name}) 的绑定吗？`)) return;
+            try {
+                showLoading();
+                const res = await fetch('/api/cards', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cardId: card.cardId }),
+                });
+                if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+                cardsData = await fetchCards();
+                renderCards();
+                showToast('已删除 ✓');
+            } catch (e) {
+                showToast('删除失败: ' + e.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function refreshCards() {
+            showLoading();
+            cardsData = await fetchCards();
+            renderCards();
+            hideLoading();
+            showToast('卡片绑定已刷新');
         }
 
         function escapeHtml(str) {
@@ -609,17 +817,20 @@ ${rows}
             }
             try {
                 showLoading();
-                const [serverData, swipesResult] = await Promise.all([
+                const [serverData, swipesResult, cardsResult] = await Promise.all([
                     fetchStockData(),
                     fetchSwipes(),
+                    fetchCards(),
                 ]);
                 if (serverData.goods) data.goods = serverData.goods;
                 if (serverData.staff) data.staff = serverData.staff;
                 swipesData = swipesResult;
+                cardsData = cardsResult;
                 saveSwipesToLocal();  // 服务器数据覆盖本地，保证最新
                 renderWarehouse();
                 renderStaff();
                 renderSwipes();
+                renderCards();
             } catch (e) {
                 showToast('⚠️ 无法连接服务器，使用本地缓存数据');
             } finally {
