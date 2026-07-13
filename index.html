@@ -285,7 +285,10 @@ function lookupName(cardId) {
 }
 
 // ========================= API 调用 =========================
-const LOCAL_RELAY = 'http://192.168.31.157:3000';
+// 智能检测：从本地打开的页面用当前地址；Vercel 打开的用硬编码 IP
+const LOCAL_RELAY = (location.hostname === 'localhost' || location.hostname.startsWith('192.168.') || location.hostname.startsWith('10.'))
+  ? location.origin
+  : 'http://192.168.118.98:3000';
 let relayOnline = null; // null=未检测, true=在线, false=离线
 
 // 启动时快速检测 relay.js 是否可达（600ms 超时，一次就够了）
