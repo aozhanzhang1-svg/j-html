@@ -285,10 +285,12 @@ function lookupName(cardId) {
 }
 
 // ========================= API 调用 =========================
-// 智能检测：从本地打开的页面用当前地址；Vercel 打开的用硬编码 IP
+// 智能检测 relay.js 地址
+// 本地页面 → 自动用 location.origin（永远对）
+// Vercel 页面 → 先试主机名（mDNS），再试 IP 兜底
 const LOCAL_RELAY = (location.hostname === 'localhost' || location.hostname.startsWith('192.168.') || location.hostname.startsWith('10.'))
   ? location.origin
-  : 'http://192.168.118.98:3000';
+  : 'http://LAPTOP-6S0MK4BM.local:3000';  // mDNS 主机名，换网也不变
 let relayOnline = null; // null=未检测, true=在线, false=离线
 
 // 启动时快速检测 relay.js 是否可达（600ms 超时，一次就够了）
