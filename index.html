@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>仓库人员管理系统</title>
+<title>RFID管理系统</title>
 <style>
 * {margin:0;padding:0;box-sizing:border-box;font-family:"微软雅黑";}
 body {display:flex;height:100vh;background:#f5f7fa;}
@@ -106,6 +106,7 @@ code {background:#edf2f7;padding:2px 8px;border-radius:4px;font-size:13px;}
 </div>
 
 <div class="main">
+  <div id="envBanner" style="margin-bottom:20px;padding:8px 16px;border-radius:6px;font-size:14px;font-weight:bold;display:inline-block;"></div>
 
   <!-- 页面1：仓库 -->
   <div id="warehouse" class="page show">
@@ -578,26 +579,47 @@ function switchPage(id) {
 }
 
 // ========================= 初始化 =========================
+// 检测环境：本地 relay.js 还是 Vercel 云端
+function detectEnv() {
+  const host = location.hostname;
+  if (host === 'localhost' || host.startsWith('192.168.')) return 'local';
+  return 'remote';
+}
+
 async function init() {
+  // 环境标签
+  const env = detectEnv();
+  const banner = $('envBanner');
+  if (env === 'local') {
+    banner.textContent = '🏭 厂内主机 — 数据存本地文件';
+    banner.style.background = '#e6fffa'; banner.style.color = '#006d77';
+    document.title = '🏭 厂内 - RFID管理系统';
+  } else {
+    banner.textContent = '☁️ 远程查看 — 数据来自云端镜像';
+    banner.style.background = '#ebf8ff'; banner.style.color = '#2b6cb0';
+    document.title = '☁️ 远程 - RFID管理系统';
+  }
+
   // 1. localStorage 秒开
-  const hasStock = loadStockLocal();
-  const hasSwipes = loadSwipesLocal();
-  const hasCards = loadCardsLocal();
+  loadStockLocal();
+  loadSwipesLocal();
+  loadCardsLocal();
 
   try {
     showLoading();
-    // 2. 从服务器同步（fetchLocalFirst 自动优先 relay.js → Vercel 降级）
+    // 2. 从服务器同步（优先 relay.js → Vercel 降级），服务器数据覆盖本地
     const [stock, swipes, cards] = await Promise.all([fetchStock(), fetchSwipes(), fetchCards()]);
 
-    if (!hasStock && stock && stock.goods) { data.goods=stock.goods; data.staff=stock.staff; saveStockLocal(); }
-    if (swipes.length) {
-      const ids=new Set(swipesData.map(r=>r.cardId+r.time));
-      const add=swipes.filter(r=>!ids.has(r.cardId+r.time));
-      if(add.length){swipesData=[...add,...swipesData];saveSwipesLocal();}
-    }
-    if (!hasCards && cards.length) { cardsData=cards; saveCardsLocal(); }
+    // 服务器有数据就用服务器的（最新），覆盖 localStorage
+    if (stock && stock.goods) { data.goods = stock.goods; data.staff = stock.staff; saveStockLocal(); }
+    if (swipes.length) { swipesData = swipes; saveSwipesLocal(); }
+    if (cards.length) { cardsData = cards; saveCardsLocal(); }
+
     renderWarehouse(); renderStaff(); renderSwipes(); renderCards();
-  } catch(e) { /* 离线 */ } finally { hideLoading(); }
+    if (env === 'local') showToast('🏭 已从本机加载最新数据');
+  } catch(e) {
+    showToast('⚠️ 离线模式，显示本地缓存');
+  } finally { hideLoading(); }
 }
 
 init();
