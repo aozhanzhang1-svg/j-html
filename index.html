@@ -440,7 +440,7 @@ async function saveEditCard(i) {
   if (!name) { showToast('姓名不能为空'); return; }
   cardsData[i].name = name;
   saveCardsLocal();
-  await apiPost('POST', '/api/cards', {cardId:cardsData[i].cardId, name});
+  await apiPost('/api/cards', {cardId:cardsData[i].cardId, name});
   cancelEditCard(i);
   $(`cnt-${i}`).textContent = name;
   renderSwipes();
@@ -455,7 +455,7 @@ async function addCard() {
   if (exists && !confirm(`卡号 ${cardId} 已绑定 "${exists.name}"，覆盖为 "${name}"？`)) return;
   showLoading();
   try {
-    await apiPost('POST', '/api/cards', {cardId, name});
+    await apiPost('/api/cards', {cardId, name});
     cardsData = await fetchCards();
     saveCardsLocal();
     renderCards();
