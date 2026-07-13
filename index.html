@@ -286,37 +286,42 @@ function lookupName(cardId) {
 
 // ========================= API 调用 =========================
 const LOCAL_RELAY = 'http://192.168.31.157:3000';
+let relayOnline = null; // null=未检测, true=在线, false=离线
 
-async function api(url, opts) {
-  const res = await fetch(url, opts);
+// 启动时快速检测 relay.js 是否可达（600ms 超时，一次就够了）
+async function checkRelay() {
+  try {
+    const c = new AbortController();
+    setTimeout(() => c.abort(), 600);
+    const r = await fetch(`${LOCAL_RELAY}/api/swipe`, { signal: c.signal });
+    relayOnline = r.ok;
+  } catch (e) { relayOnline = false; }
+}
+
+// 所有请求走这里：relay.js 在线就用它（本地，快），离线用当前服务器（Vercel）
+async function apiFetch(path, opts) {
+  if (relayOnline) {
+    try {
+      const c = new AbortController();
+      setTimeout(() => c.abort(), 3000);
+      const res = await fetch(`${LOCAL_RELAY}${path}`, { ...opts, signal: c.signal });
+      if (res.ok) return res.json();
+    } catch (e) { relayOnline = false; } // 这次失败了，标记离线
+  }
+  // fallback
+  const res = await fetch(path, opts);
   if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error||`${res.status}`); }
   return res.json();
 }
 
-// 写操作：优先发到本地 relay.js（主存储），不可达则回退到当前服务器
-async function apiWrite(method, path, data) {
-  try {
-    const ctrl = new AbortController();
-    setTimeout(() => ctrl.abort(), 2000);
-    const res = await fetch(`${LOCAL_RELAY}${path}`, {
-      method, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data), signal: ctrl.signal,
-    });
-    if (res.ok) return res.json();
-  } catch (e) { /* relay.js 不可达，用当前服务器 */ }
-  return api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-}
+function apiGet(path) { return apiFetch(path, {}); }
+function apiPost(path, data) { return apiFetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }); }
+function apiDelete(path, data) { return apiFetch(path, { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data||{}) }); }
 
-// GET 优先本地 relay.js，不可达则用当前服务器（Vercel）
-async function fetchLocalFirst(path, extract) {
-  try { const c=new AbortController(); setTimeout(()=>c.abort(),2000);
-    const r=await fetch(`${LOCAL_RELAY}${path}`,{signal:c.signal}); if(r.ok) return extract(await r.json()); } catch(e){}
-  return extract(await api(path));
-}
-async function fetchStock() { return fetchLocalFirst('/api/stock', d=>d); }
-async function saveStock(goods, staff) { return apiWrite('POST', '/api/stock', {goods, staff}); }
-async function fetchSwipes() { return fetchLocalFirst('/api/swipe', d=>d.swipes||[]); }
-async function fetchCards() { return fetchLocalFirst('/api/cards', d=>d.cards||[]); }
+async function fetchStock() { return apiGet('/api/stock'); }
+function saveStock(goods, staff) { return apiPost('/api/stock', {goods, staff}); }
+async function fetchSwipes() { const r=await apiGet('/api/swipe'); return r.swipes||[]; }
+async function fetchCards() { const r=await apiGet('/api/cards'); return r.cards||[]; }
 
 // ========================= 仓库页面 =========================
 function renderWarehouse() {
@@ -368,7 +373,7 @@ async function refreshSwipes() {
 async function clearAllSwipes() {
   if (!confirm('⚠️ 确定清空云端全部刷卡记录？\n\n建议先导出 Excel 备份！')) return;
   showLoading();
-  await apiWrite('DELETE', '/api/swipe');
+  await apiDelete('/api/swipe');
   swipesData = [];
   renderSwipes();
   saveSwipesLocal();
@@ -464,7 +469,7 @@ async function saveEditCard(i) {
   if (!name) { showToast('姓名不能为空'); return; }
   cardsData[i].name = name;
   saveCardsLocal();
-  await apiWrite('POST', '/api/cards', {cardId:cardsData[i].cardId, name});
+  await apiPost('POST', '/api/cards', {cardId:cardsData[i].cardId, name});
   cancelEditCard(i);
   $(`cnt-${i}`).textContent = name;
   renderSwipes();
@@ -479,7 +484,7 @@ async function addCard() {
   if (exists && !confirm(`卡号 ${cardId} 已绑定 "${exists.name}"，覆盖为 "${name}"？`)) return;
   showLoading();
   try {
-    await apiWrite('POST', '/api/cards', {cardId, name});
+    await apiPost('POST', '/api/cards', {cardId, name});
     cardsData = await fetchCards();
     saveCardsLocal();
     renderCards();
@@ -496,7 +501,7 @@ async function deleteCard(i) {
   if (!confirm(`删除 ${c.cardId} (${c.name})？`)) return;
   showLoading();
   try {
-    await apiWrite('DELETE', '/api/cards', {cardId: c.cardId});
+    await apiDelete('/api/cards', {cardId: c.cardId});
     cardsData = await fetchCards();
     saveCardsLocal();
     renderCards();
@@ -605,9 +610,12 @@ async function init() {
   loadSwipesLocal();
   loadCardsLocal();
 
+  // 2. 快速检测 relay.js 是否在线（600ms 超时）
+  checkRelay();
+
   try {
     showLoading();
-    // 2. 从服务器同步（优先 relay.js → Vercel 降级），服务器数据覆盖本地
+    // 3. 从服务器同步（relay.js 在线就用它，否则用 Vercel）
     const [stock, swipes, cards] = await Promise.all([fetchStock(), fetchSwipes(), fetchCards()]);
 
     // 服务器有数据就用服务器的（最新），覆盖 localStorage
