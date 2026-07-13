@@ -191,37 +191,6 @@ const LS = {
   cards: 'rfid_cards',
 };
 
-const DEFAULT_GOODS = [
-  { icon:'📦', name:'钢材原料', stock:126 },
-  { icon:'🔩', name:'标准钢球', stock:890 },
-  { icon:'🛠️', name:'铸造模具', stock:32 },
-  { icon:'⚙️', name:'机械配件', stock:157 },
-  { icon:'🪨', name:'铸造砂料', stock:640 },
-  { icon:'🧰', name:'维修工具', stock:48 },
-];
-
-const DEFAULT_STAFF = [
-  { icon:'👷', name:'鸡大强', status:'morning' },{ icon:'👷‍♂️', name:'鸡大国', status:'night' },
-  { icon:'👷‍♀️', name:'鸡大梅', status:'all' },{ icon:'🧑‍🏭', name:'鸡大海', status:'morning' },
-  { icon:'👷', name:'鸡大山', status:'night' },{ icon:'👷‍♂️', name:'鸡大刚', status:'all' },
-  { icon:'👷‍♀️', name:'鸡大芬', status:'morning' },{ icon:'🧑‍🏭', name:'鸡大军', status:'night' },
-  { icon:'👷', name:'鸡大林', status:'all' },{ icon:'👷‍♂️', name:'鸡大忠', status:'morning' },
-  { icon:'👷‍♀️', name:'鸡大秀', status:'night' },{ icon:'🧑‍🏭', name:'鸡大福', status:'all' },
-  { icon:'👷', name:'鸡大荣', status:'morning' },{ icon:'👷‍♂️', name:'鸡大伟', status:'night' },
-  { icon:'👷‍♀️', name:'鸡大莲', status:'all' },{ icon:'🧑‍🏭', name:'鸡大斌', status:'morning' },
-  { icon:'👷', name:'鸡大彪', status:'night' },{ icon:'👷‍♂️', name:'鸡大祥', status:'all' },
-  { icon:'👷‍♀️', name:'鸡大芝', status:'morning' },{ icon:'🧑‍🏭', name:'鸡大坤', status:'night' },
-  { icon:'👷', name:'鸡小宇', status:'all' },{ icon:'👷‍♂️', name:'鸡小航', status:'morning' },
-  { icon:'👷‍♀️', name:'鸡小婷', status:'night' },{ icon:'🧑‍🏭', name:'鸡小泽', status:'all' },
-  { icon:'👷', name:'鸡小豪', status:'morning' },{ icon:'👷‍♂️', name:'鸡小凯', status:'night' },
-  { icon:'👷‍♀️', name:'鸡小冉', status:'all' },{ icon:'🧑‍🏭', name:'鸡小辰', status:'morning' },
-  { icon:'👷', name:'鸡小硕', status:'night' },{ icon:'👷‍♂️', name:'鸡小杨', status:'all' },
-  { icon:'👷‍♀️', name:'鸡小诺', status:'morning' },{ icon:'🧑‍🏭', name:'鸡小峰', status:'night' },
-  { icon:'👷', name:'鸡小恒', status:'all' },{ icon:'👷‍♂️', name:'鸡小乐', status:'morning' },
-  { icon:'👷‍♀️', name:'鸡小晴', status:'night' },{ icon:'🧑‍🏭', name:'鸡小川', status:'all' },
-  { icon:'👷', name:'鸡小帆', status:'morning' },{ icon:'👷‍♂️', name:'鸡小源', status:'night' },
-  { icon:'👷‍♀️', name:'鸡小萱', status:'all' },{ icon:'🧑‍🏭', name:'鸡小炎', status:'morning' },
-];
 
 const STATUS_MAP = {
   morning:{text:'早上到岗',cls:'status-morning'},
@@ -231,10 +200,7 @@ const STATUS_MAP = {
 };
 
 // ========================= 全局状态 =========================
-let data = {
-  goods: JSON.parse(JSON.stringify(DEFAULT_GOODS)),
-  staff: JSON.parse(JSON.stringify(DEFAULT_STAFF)),
-};
+let data = { goods: [], staff: [] };
 let swipesData = [];
 let cardsData = [];
 
@@ -567,17 +533,16 @@ function editStaff(i) {
 
 async function resetAllData() {
   if (!confirm('恢复默认数据？当前修改将丢失。')) return;
-  data.goods = JSON.parse(JSON.stringify(DEFAULT_GOODS));
-  data.staff = JSON.parse(JSON.stringify(DEFAULT_STAFF));
-  saveStockLocal();
   showLoading();
-  saveStock(data.goods, data.staff).catch(()=>{});
-  renderWarehouse();
-  renderStaff();
-  hideLoading();
-  showToast('已恢复 ✓');
-}
-
+  try {
+    const r = await apiPost('/api/reset');
+    if (r && r.goods) { data.goods = r.goods; data.staff = r.staff; }
+    saveStockLocal();
+    renderWarehouse();
+    renderStaff();
+    showToast('已恢复 ✓');
+  } catch(e) { showToast('恢复失败: ' + e.message); }
+  finally { hideLoading(); }
 // ========================= 导航 =========================
 function switchPage(id) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('show'));
@@ -589,7 +554,6 @@ function switchPage(id) {
 }
 
 // ========================= 初始化 =========================
-// 检测环境：本地 relay.js 还是 Vercel 云端
 function detectEnv() {
   const host = location.hostname;
   if (host === 'localhost' || host.startsWith('192.168.')) return 'local';
@@ -597,7 +561,6 @@ function detectEnv() {
 }
 
 async function init() {
-  // 环境标签
   const env = detectEnv();
   const banner = $('envBanner');
   if (env === 'local') {

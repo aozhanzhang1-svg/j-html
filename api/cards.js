@@ -16,12 +16,6 @@ function normId(id) {
   return (id || '').replace(/[\s\-_]/g, '').toUpperCase();
 }
 
-// 预置默认绑定（与 ESP32 中 cardList 一致）
-const DEFAULT_CARDS = [
-  { cardId: '4A 8B 32 16', name: 'fu_guan' },
-  { cardId: 'EA AB 36 16', name: 'yuan_gong_B' },
-];
-
 let memCards = null;
 
 async function getCards() {
@@ -31,11 +25,6 @@ async function getCards() {
   } catch (e) {
     console.error('[cards] KV 读取失败，回退到内存:', e.message);
     if (memCards) return memCards;
-  }
-  // 首次启动，写入默认数据
-  if (!memCards) {
-    memCards = [...DEFAULT_CARDS];
-    try { await kv.set('cards_data', memCards); } catch (e) { /* ignore */ }
   }
   return memCards;
 }
