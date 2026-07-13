@@ -284,16 +284,38 @@ function lookupName(cardId) {
 }
 
 // ========================= API 调用 =========================
+const LOCAL_RELAY = 'http://192.168.31.157:3000';
+
 async function api(url, opts) {
   const res = await fetch(url, opts);
   if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error||`${res.status}`); }
   return res.json();
 }
 
-async function fetchStock() { return api('/api/stock'); }
-async function saveStock(goods, staff) { return api('/api/stock', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({goods,staff}) }); }
-async function fetchSwipes() { const r = await api('/api/swipe'); return r.swipes||[]; }
-async function fetchCards() { const r = await api('/api/cards'); return r.cards||[]; }
+// 写操作：优先发到本地 relay.js（主存储），不可达则回退到当前服务器
+async function apiWrite(method, path, data) {
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 2000);
+    const res = await fetch(`${LOCAL_RELAY}${path}`, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data), signal: ctrl.signal,
+    });
+    if (res.ok) return res.json();
+  } catch (e) { /* relay.js 不可达，用当前服务器 */ }
+  return api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+}
+
+// GET 优先本地 relay.js，不可达则用当前服务器（Vercel）
+async function fetchLocalFirst(path, extract) {
+  try { const c=new AbortController(); setTimeout(()=>c.abort(),2000);
+    const r=await fetch(`${LOCAL_RELAY}${path}`,{signal:c.signal}); if(r.ok) return extract(await r.json()); } catch(e){}
+  return extract(await api(path));
+}
+async function fetchStock() { return fetchLocalFirst('/api/stock', d=>d); }
+async function saveStock(goods, staff) { return apiWrite('POST', '/api/stock', {goods, staff}); }
+async function fetchSwipes() { return fetchLocalFirst('/api/swipe', d=>d.swipes||[]); }
+async function fetchCards() { return fetchLocalFirst('/api/cards', d=>d.cards||[]); }
 
 // ========================= 仓库页面 =========================
 function renderWarehouse() {
@@ -345,7 +367,7 @@ async function refreshSwipes() {
 async function clearAllSwipes() {
   if (!confirm('⚠️ 确定清空云端全部刷卡记录？\n\n建议先导出 Excel 备份！')) return;
   showLoading();
-  await fetch('/api/swipe',{method:'DELETE'});
+  await apiWrite('DELETE', '/api/swipe');
   swipesData = [];
   renderSwipes();
   saveSwipesLocal();
@@ -441,7 +463,7 @@ async function saveEditCard(i) {
   if (!name) { showToast('姓名不能为空'); return; }
   cardsData[i].name = name;
   saveCardsLocal();
-  await fetch('/api/cards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cardId:cardsData[i].cardId,name})});
+  await apiWrite('POST', '/api/cards', {cardId:cardsData[i].cardId, name});
   cancelEditCard(i);
   $(`cnt-${i}`).textContent = name;
   renderSwipes();
@@ -456,7 +478,7 @@ async function addCard() {
   if (exists && !confirm(`卡号 ${cardId} 已绑定 "${exists.name}"，覆盖为 "${name}"？`)) return;
   showLoading();
   try {
-    await fetch('/api/cards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cardId,name})});
+    await apiWrite('POST', '/api/cards', {cardId, name});
     cardsData = await fetchCards();
     saveCardsLocal();
     renderCards();
@@ -473,7 +495,7 @@ async function deleteCard(i) {
   if (!confirm(`删除 ${c.cardId} (${c.name})？`)) return;
   showLoading();
   try {
-    await fetch('/api/cards',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({cardId:c.cardId})});
+    await apiWrite('DELETE', '/api/cards', {cardId: c.cardId});
     cardsData = await fetchCards();
     saveCardsLocal();
     renderCards();
@@ -556,85 +578,26 @@ function switchPage(id) {
 }
 
 // ========================= 初始化 =========================
-// 存储优先级：localStorage > 本地 relay.js > Vercel KV
-// 这样无论从哪打开网页、KV 是否正常，数据都在
-const LOCAL_RELAY = 'http://192.168.31.157:3000';
-
-// 从本地 relay.js 拉数据（同 WiFi 内可用）
-async function fetchFromLocalRelay(apiPath) {
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 3000);
-    const res = await fetch(`${LOCAL_RELAY}${apiPath}`, { signal: ctrl.signal });
-    clearTimeout(timer);
-    if (!res.ok) return null;
-    return res.json();
-  } catch (e) { return null; }
-}
-
-// 从多处数据源取数据，优先返回有数据的那个
-async function fetchBestData(apiPath, vercelFetcher) {
-  // 1. 先试 Vercel（快）
-  try {
-    const result = await vercelFetcher();
-    if (result && (Array.isArray(result) ? result.length : result.goods)) return { source: 'vercel', data: result };
-  } catch (e) { /* ignore */ }
-  // 2. Vercel 没数据，试本地 relay.js
-  const local = await fetchFromLocalRelay(apiPath);
-  if (local) {
-    const hasData = Array.isArray(local) ? local.length : (local.goods || local.cards || local.swipes);
-    if (hasData || (local.swipes && local.swipes.length)) return { source: 'local', data: local };
-  }
-  return { source: 'none', data: null };
-}
-
 async function init() {
-  // 1. 先从 localStorage 加载（秒开，一定有）
+  // 1. localStorage 秒开
   const hasStock = loadStockLocal();
   const hasSwipes = loadSwipesLocal();
   const hasCards = loadCardsLocal();
 
   try {
     showLoading();
+    // 2. 从服务器同步（fetchLocalFirst 自动优先 relay.js → Vercel 降级）
+    const [stock, swipes, cards] = await Promise.all([fetchStock(), fetchSwipes(), fetchCards()]);
 
-    // 2. 从服务器同步（Vercel → 本地 relay.js 逐级降级）
-    const [stockResult, swipesResult, cardsResult] = await Promise.all([
-      fetchBestData('/api/stock', fetchStock),
-      fetchBestData('/api/swipe', fetchSwipes),
-      fetchBestData('/api/cards', fetchCards),
-    ]);
-
-    // 货物+人员：只在本地没有时用服务器的
-    if (!hasStock && stockResult.data) {
-      const s = stockResult.data;
-      data.goods = s.goods || data.goods;
-      data.staff = s.staff || data.staff;
-      saveStockLocal();
+    if (!hasStock && stock && stock.goods) { data.goods=stock.goods; data.staff=stock.staff; saveStockLocal(); }
+    if (swipes.length) {
+      const ids=new Set(swipesData.map(r=>r.cardId+r.time));
+      const add=swipes.filter(r=>!ids.has(r.cardId+r.time));
+      if(add.length){swipesData=[...add,...swipesData];saveSwipesLocal();}
     }
-
-    // 刷卡记录：合并新记录
-    if (swipesResult.data) {
-      const s = (swipesResult.data.swipes || swipesResult.data);
-      if (s.length) {
-        const localIds = new Set(swipesData.map(r => r.cardId + r.time));
-        const newOnes = s.filter(r => !localIds.has(r.cardId + r.time));
-        if (newOnes.length) { swipesData = [...newOnes, ...swipesData]; saveSwipesLocal(); }
-      }
-    }
-
-    // 卡片绑定：只在本地没有时用服务器的
-    if (!hasCards && cardsResult.data) {
-      const c = (cardsResult.data.cards || cardsResult.data);
-      if (c && c.length) { cardsData = c; saveCardsLocal(); }
-    }
-
+    if (!hasCards && cards.length) { cardsData=cards; saveCardsLocal(); }
     renderWarehouse(); renderStaff(); renderSwipes(); renderCards();
-    if (stockResult.source === 'local' || swipesResult.source === 'local') {
-      showToast('📡 已从本机 relay.js 同步数据');
-    }
-  } catch(e) {
-    console.log('离线，纯本地模式');
-  } finally { hideLoading(); }
+  } catch(e) { /* 离线 */ } finally { hideLoading(); }
 }
 
 init();
