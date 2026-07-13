@@ -509,7 +509,7 @@ function editGoods(i) {
     if (!name) { showToast('名称不能为空'); return; }
     data.goods[i] = { icon:icon||'📦', name, stock };
     saveStockLocal();
-    saveStock(data.goods, data.staff).catch(()=>{});
+    saveStock(data.goods, data.staff).catch(e => showToast("保存失败: " + e.message));
     renderWarehouse();
     showToast('已保存 ✓');
   });
@@ -525,7 +525,7 @@ function editStaff(i) {
     data.staff[i].name = $('esn').value.trim() || data.staff[i].name;
     data.staff[i].status = $('ess').value;
     saveStockLocal();
-    saveStock(data.goods, data.staff).catch(()=>{});
+    saveStock(data.goods, data.staff).catch(e => showToast("保存失败: " + e.message));
     renderStaff();
     showToast('已保存 ✓');
   });
@@ -580,7 +580,7 @@ async function init() {
   loadCardsLocal();
 
   // 2. 快速检测 relay.js 是否在线（600ms 超时）
-  checkRelay();
+  await checkRelay();
 
   try {
     showLoading();
