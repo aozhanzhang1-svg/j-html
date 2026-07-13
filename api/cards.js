@@ -16,15 +16,14 @@ function normId(id) {
   return (id || '').replace(/[\s\-_]/g, '').toUpperCase();
 }
 
-let memCards = null;
+let memCards = [];
 
 async function getCards() {
   try {
     const data = await kv.get('cards_data');
-    if (data) return data;
+    if (data) { memCards = data; return data; }
   } catch (e) {
     console.error('[cards] KV 读取失败，回退到内存:', e.message);
-    if (memCards) return memCards;
   }
   return memCards;
 }

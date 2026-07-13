@@ -543,6 +543,7 @@ async function resetAllData() {
     showToast('已恢复 ✓');
   } catch(e) { showToast('恢复失败: ' + e.message); }
   finally { hideLoading(); }
+}
 // ========================= 导航 =========================
 function switchPage(id) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('show'));
