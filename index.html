@@ -184,6 +184,7 @@ code {background:#edf2f7;padding:2px 8px;border-radius:4px;font-size:13px;}
 <script>
 // ========================= 常量 & 默认数据 =========================
 const LS = {
+  stock: 'rfid_stock',      // 货物+人员数据
   swipes: 'rfid_swipes',
   swipesTime: 'rfid_swipes_time',
   cards: 'rfid_cards',
@@ -251,6 +252,15 @@ function hideLoading() { $('loadingOverlay').classList.remove('show'); }
 function loadLocal(key) { try { const v=localStorage.getItem(key); return v?JSON.parse(v):null; } catch(e){return null;} }
 function saveLocal(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e){} }
 
+// 货物+人员
+function loadStockLocal() {
+  const v = loadLocal(LS.stock);
+  if (v && v.goods) { data.goods = v.goods; data.staff = v.staff; renderWarehouse(); renderStaff(); return true; }
+  return false;
+}
+function saveStockLocal() { saveLocal(LS.stock, { goods:data.goods, staff:data.staff }); }
+
+// 刷卡记录
 function loadSwipesLocal() {
   const v = loadLocal(LS.swipes);
   if (Array.isArray(v) && v.length) { swipesData = v; renderSwipes(); return true; }
@@ -258,6 +268,7 @@ function loadSwipesLocal() {
 }
 function saveSwipesLocal() { saveLocal(LS.swipes, swipesData); saveLocal(LS.swipesTime, new Date().toISOString()); }
 
+// 卡片绑定
 function loadCardsLocal() {
   const v = loadLocal(LS.cards);
   if (Array.isArray(v)) { cardsData = v; renderCards(); return true; }
@@ -473,12 +484,9 @@ async function deleteCard(i) {
 }
 
 async function refreshCards() {
-  showLoading();
-  cardsData = await fetchCards();
-  saveCardsLocal();
-  renderCards();
-  hideLoading();
-  showToast('已刷新');
+  // 从服务器同步，但不覆盖本地数据（服务器可能返回默认值）
+  // 实际上卡片绑定只用 local，服务器同步可忽略
+  showToast('卡片绑定以浏览器本地存储为准 ✓');
 }
 
 // ========================= 弹窗 =========================
@@ -501,7 +509,8 @@ function editGoods(i) {
     const name = $('en').value.trim(), icon = $('ei').value.trim(), stock = parseInt($('es').value)||0;
     if (!name) { showToast('名称不能为空'); return; }
     data.goods[i] = { icon:icon||'📦', name, stock };
-    await saveStock(data.goods, data.staff);
+    saveStockLocal();
+    saveStock(data.goods, data.staff).catch(()=>{});
     renderWarehouse();
     showToast('已保存 ✓');
   });
@@ -516,7 +525,8 @@ function editStaff(i) {
   `, async () => {
     data.staff[i].name = $('esn').value.trim() || data.staff[i].name;
     data.staff[i].status = $('ess').value;
-    await saveStock(data.goods, data.staff);
+    saveStockLocal();
+    saveStock(data.goods, data.staff).catch(()=>{});
     renderStaff();
     showToast('已保存 ✓');
   });
@@ -526,8 +536,9 @@ async function resetAllData() {
   if (!confirm('恢复默认数据？当前修改将丢失。')) return;
   data.goods = JSON.parse(JSON.stringify(DEFAULT_GOODS));
   data.staff = JSON.parse(JSON.stringify(DEFAULT_STAFF));
+  saveStockLocal();
   showLoading();
-  await saveStock(data.goods, data.staff);
+  saveStock(data.goods, data.staff).catch(()=>{});
   renderWarehouse();
   renderStaff();
   hideLoading();
@@ -545,26 +556,42 @@ function switchPage(id) {
 }
 
 // ========================= 初始化 =========================
+// 核心原则：localStorage 是主存储（永不丢失），服务器只是备份（KV 可能不可用）
 async function init() {
-  renderWarehouse();
-  renderStaff();
-  loadSwipesLocal();
-  loadCardsLocal();
+  // 1. 先从本地加载（必定有数据，秒开）
+  const hasStock = loadStockLocal();
+  const hasSwipes = loadSwipesLocal();
+  const hasCards = loadCardsLocal();
+
   try {
     showLoading();
     const [stock, swipes, cards] = await Promise.all([fetchStock(), fetchSwipes(), fetchCards()]);
-    if (stock.goods) data.goods = stock.goods;
-    if (stock.staff) data.staff = stock.staff;
-    swipesData = swipes;
-    if (cards && cards.length) cardsData = cards;
-    saveSwipesLocal();
-    saveCardsLocal();
-    renderWarehouse();
-    renderStaff();
-    renderSwipes();
-    renderCards();
+
+    // 只在本地完全没有数据时，才用服务器的初始化
+    if (!hasStock && stock.goods) {
+      data.goods = stock.goods;
+      data.staff = stock.staff;
+      saveStockLocal();
+    }
+    // 刷卡记录：合并服务器上本地没有的（新刷卡记录）
+    if (swipes.length) {
+      const localIds = new Set(swipesData.map(s => s.cardId + s.time));
+      const newOnes = swipes.filter(s => !localIds.has(s.cardId + s.time));
+      if (newOnes.length) {
+        swipesData = [...newOnes, ...swipesData];
+        saveSwipesLocal();
+      }
+    }
+    // 卡片绑定：只在本地没数据时用服务器的
+    if (!hasCards && cards.length) {
+      cardsData = cards;
+      saveCardsLocal();
+    }
+
+    renderWarehouse(); renderStaff(); renderSwipes(); renderCards();
   } catch(e) {
-    showToast('⚠️ 离线模式，使用本地缓存');
+    // 服务器不可用完全没关系，本地数据已经显示了
+    console.log('服务器不可用，纯本地模式');
   } finally { hideLoading(); }
 }
 
@@ -572,6 +599,7 @@ init();
 
 // 关闭页面前自动保存
 window.addEventListener('beforeunload', () => {
+  saveStockLocal();
   saveSwipesLocal();
   saveCardsLocal();
 });
