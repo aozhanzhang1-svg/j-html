@@ -479,6 +479,8 @@ async function deleteCard(i) {
   try {
     await apiDelete('/api/cards', {cardId: c.cardId});
     cardsData = await fetchCards();
+    const stock = await fetchStock();
+    if (stock && stock.goods) { data.goods = stock.goods; data.staff = stock.staff; saveStockLocal(); renderWarehouse(); renderStaff(); }
     saveCardsLocal();
     renderCards();
     renderSwipes();
