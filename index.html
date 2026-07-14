@@ -460,6 +460,8 @@ async function addCard() {
   try {
     await apiPost('/api/cards', {cardId, name});
     cardsData = await fetchCards();
+    const stock = await fetchStock();
+    if (stock && stock.goods) { data.goods = stock.goods; data.staff = stock.staff; saveStockLocal(); renderWarehouse(); renderStaff(); }
     saveCardsLocal();
     renderCards();
     renderSwipes();
