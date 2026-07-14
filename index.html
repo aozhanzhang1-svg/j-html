@@ -99,10 +99,10 @@ code {background:#edf2f7;padding:2px 8px;border-radius:4px;font-size:13px;}
 
 <!-- 侧边栏 -->
 <div class="sidebar">
-  <button class="nav-btn active" onclick="switchPage('warehouse')">可视化仓库</button>
-  <button class="nav-btn" onclick="switchPage('staff')">人员到岗</button>
-  <button class="nav-btn" onclick="switchPage('swipe')">📡 刷卡记录</button>
-  <button class="nav-btn" onclick="switchPage('cards')">💳 卡片绑定</button>
+  <button class="nav-btn active" onclick="switchPage('warehouse', event)">可视化仓库</button>
+  <button class="nav-btn" onclick="switchPage('staff', event)">人员到岗</button>
+  <button class="nav-btn" onclick="switchPage('swipe', event)">📡 刷卡记录</button>
+  <button class="nav-btn" onclick="switchPage('cards', event)">💳 卡片绑定</button>
 </div>
 
 <div class="main">
@@ -332,13 +332,16 @@ function renderSwipes() {
   $('swipeTotal').textContent = swipesData.length;
 }
 
+let swipesLoading = false;
 async function refreshSwipes() {
-  showLoading();
-  swipesData = await fetchSwipes();
-  renderSwipes();
-  saveSwipesLocal();
-  hideLoading();
-  showToast('已刷新');
+  if (swipesLoading) return;
+  swipesLoading = true;
+  try {
+    swipesData = await fetchSwipes();
+    renderSwipes();
+    saveSwipesLocal();
+  } catch(e) { /* ignore */ }
+  finally { swipesLoading = false; }
 }
 
 async function clearAllSwipes() {
@@ -545,13 +548,12 @@ async function resetAllData() {
   finally { hideLoading(); }
 }
 // ========================= 导航 =========================
-function switchPage(id) {
+function switchPage(id, e) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('show'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   $(id).classList.add('show');
-  event.target.classList.add('active');
+  if (e && e.target) e.target.classList.add('active');
   if (id === 'swipe') refreshSwipes();
-  if (id === 'cards') refreshCards();
 }
 
 // ========================= 初始化 =========================
